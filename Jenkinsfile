@@ -15,22 +15,22 @@ pipeline {
             }
         }
         stage('2. Calidad de Código (Linting)') {
-            steps {
-                echo 'Validando estilo y sintaxis del código...'
-                bat 'echo Análisis completado' 
+             steps {
+                 echo 'Validando estilo y sintaxis del código...'
+                 bat 'flake8 .' // o el comando real de linting
             }
-        }
-        stage('3. Pruebas de Integración') {
-            steps {
-                echo "Probando conexión con la base de datos de Smart-Liquor..."
-                bat "echo Conexión establecida con éxito"
-            }
-        }
-        stage('4. Construcción (Docker)') {
-            steps {
-                echo 'Generando imagen de contenedor para despliegue...'
-                bat 'echo docker build -t smart-liquor-app .'
-            }
-        }
+         }
+         stage('3. Pruebas de Integración') {
+              steps {
+                 echo "Ejecutando pruebas de integración..."
+                 bat 'pytest tests/integration' // ejemplo real de test
+             }
+         }
+         stage('4. Construcción (Docker)') {
+              steps {
+                 echo 'Generando imagen de contenedor para despliegue...'
+                 bat 'docker build -t smart-liquor-app .'
+              }
+         }
     }
 }
