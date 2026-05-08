@@ -26,10 +26,13 @@ pipeline {
             }
         }
         stage('4. Construcción (Docker)') {
-            steps {
+             when {
+                expression { false }
+             }
+             steps {
                 echo 'Generando imagen de contenedor para despliegue...'
-                bat 'docker build -t smart-liquor-app .'
-            }
+                bat "docker build -t smart-liquor-app ."
+             }
         }
     }
 }
