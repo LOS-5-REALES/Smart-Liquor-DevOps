@@ -1,0 +1,23 @@
+[flake8]
+# Aumenta el límite de línea a 120 (el default 79 es muy estricto)
+max-line-length = 120
+
+# Ignora reglas que no son críticas para el proyecto
+ignore =
+    E221,  # espacios antes de operador (alineación visual)
+    E261,  # espacios antes de comentario inline
+    E302,  # líneas en blanco entre funciones
+    E305,  # líneas en blanco después de función
+    W291,  # trailing whitespace
+    W292,  # no newline at end of file
+    W293,  # blank line contains whitespace
+    F401   # imports no usados (insertar_pedido.py)
+
+# Excluye carpetas que no son código del proyecto
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    infra/
+    
