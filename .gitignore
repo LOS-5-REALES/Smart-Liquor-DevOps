@@ -27,3 +27,13 @@ npm-debug.log*
 # --- OS ---
 .DS_Store
 Thumbs.db
+
+# --- Terraform ---
+infra/terraform.tfvars
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/*.tfstate
+infra/*.tfstate.backup
+
+# --- REPORTE- --
+static/*.pdf

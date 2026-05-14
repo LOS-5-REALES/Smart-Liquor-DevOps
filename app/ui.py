@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 from database import engine
 import models
 import crud
+from reports import generar_pdf_pedidos
 
 
 async def run_db(fn):
@@ -42,6 +43,8 @@ async def main(page: ft.Page):
     inp_fecha_fin    = ft.TextField(label="Hasta (DD/MM/AAAA)", width=160, value="")
     txt_error_fecha  = ft.Text("", color="red", size=11)
 
+    
+
     def parsear_fecha(texto):
         texto = texto.strip()
         if not texto:
@@ -70,6 +73,7 @@ async def main(page: ft.Page):
                 resultado.append(p)
         return resultado
 
+
     async def aplicar_filtro(e=None):
         txt_error_fecha.value = ""
         desde = parsear_fecha(inp_fecha_inicio.value)
@@ -80,6 +84,37 @@ async def main(page: ft.Page):
             return
         await construir_lista_pedidos(filtrar_pedidos(_todos_los_pedidos))
         await page.update_async()
+
+    async def ejecutar_reporte_pdf(e):
+        txt_error_fecha.value = "⏳ Generando reporte..."
+        await page.update_async()
+        try:
+            from reports import generar_pdf_pedidos
+            # Usamos los pedidos que están cargados actualmente
+            pedidos_para_pdf = filtrar_pedidos(_todos_los_pedidos)
+            
+            if not pedidos_para_pdf:
+                txt_error_fecha.value = "⚠️ No hay pedidos en este rango."
+                await page.update_async()
+                return
+
+            rango = f"{inp_fecha_inicio.value} a {inp_fecha_fin.value}" if inp_fecha_inicio.value else "General"
+            nombre_archivo = generar_pdf_pedidos(pedidos_para_pdf, rango)
+            
+            # Abrir el PDF en una nueva pestaña (localhost:8000 es la API)
+            await page.launch_url_async(f"http://localhost:8000/static/{nombre_archivo}")
+            txt_error_fecha.value = "✅ Reporte generado."
+        except Exception as ex:
+            txt_error_fecha.value = f"❌ Error PDF: {ex}"
+        await page.update_async()
+        
+    btn_reporte = ft.ElevatedButton(
+        "Generar PDF", 
+        icon="picture_as_pdf", 
+        bgcolor="#c62828", 
+        color="white",
+        on_click=ejecutar_reporte_pdf
+    )
 
     async def limpiar_filtro(e=None):
         inp_fecha_inicio.value = inp_fecha_fin.value = txt_error_fecha.value = ""
@@ -504,38 +539,39 @@ async def main(page: ft.Page):
             for pr in prods:
                 es_bajo = (pr.stock_actual or 0) <= (pr.stock_minimo or 10)
                 es_desc = pr.nombre.startswith("[DESCONTINUADO]")
+                
                 lista_inventario_ui.controls.append(ft.Container(
                     content=ft.Row([
                         ft.Column([
-                            ft.Text(pr.nombre, weight="bold",
-                                    color="#666" if es_desc else "white"),
+                            ft.Text(pr.nombre, weight="bold", color="#666" if es_desc else "white"),
                             ft.Row([
-                                ft.Text(f"Stock: {pr.stock_actual}",
-                                        color="red" if es_bajo else "#aaa", size=13),
+                                ft.Text("Stock disponible:", color="#aaa", size=12),
+                                ft.Text(
+                                    f"{pr.stock_actual}", 
+                                    color="red" if es_bajo else "green", 
+                                    weight="bold", 
+                                    size=15
+                                ),
                                 ft.Container(
                                     visible=es_bajo and not es_desc,
-                                    content=ft.Text("STOCK BAJO", size=10, color="white"),
-                                    bgcolor="red", border_radius=4,
-                                    padding=ft.padding.symmetric(horizontal=5, vertical=2),
+                                    content=ft.Text("STOCK BAJO", size=9, weight="bold"),
+                                    bgcolor="red", border_radius=4, padding=3
                                 ),
                             ], spacing=8),
                         ], expand=True, spacing=2),
                         ft.IconButton(
                             icon="add_circle", icon_color="green", icon_size=22,
                             tooltip="Sumar stock", visible=not es_desc,
-                            on_click=lambda e, pid=pr.id: asyncio.ensure_future(
-                                abrir_suministro(pid)
-                            ),
+                            on_click=lambda e, pid=pr.id: asyncio.ensure_future(abrir_suministro(pid)),
                         ),
                         ft.IconButton(
                             icon="delete_outline", icon_color="red", icon_size=22,
                             tooltip="Eliminar producto",
-                            on_click=lambda e, pid=pr.id, nom=pr.nombre: asyncio.ensure_future(
-                                abrir_eliminar(pid, nom)
-                            ),
+                            on_click=lambda e, pid=pr.id, nom=pr.nombre: asyncio.ensure_future(abrir_eliminar(pid, nom)),
                         ),
                     ], vertical_alignment="center"),
                     padding=10, bgcolor="#16191c", border_radius=10,
+                    border=ft.border.all(1, "red") if es_bajo else None
                 ))
 
             await page.update_async()
@@ -569,7 +605,7 @@ async def main(page: ft.Page):
                 ft.Row([
                     inp_fecha_inicio, inp_fecha_fin,
                     ft.ElevatedButton("Filtrar", bgcolor="#1565c0", color="white",
-                                      height=40, on_click=aplicar_filtro),
+                                      height=40, on_click=aplicar_filtro),btn_reporte,
                     ft.TextButton("Limpiar", on_click=limpiar_filtro),
                 ], spacing=8, vertical_alignment="center"),
                 txt_error_fecha,

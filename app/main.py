@@ -3,8 +3,13 @@ import flet_fastapi
 import uvicorn
 from ui import main as build_dashboard
 from database import esperar_y_crear_tablas
+from fastapi.staticfiles import StaticFiles
+import os
 
 app = fastapi.FastAPI()
+if not os.path.exists("static"):
+    os.makedirs("static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/api")
 def read_root():

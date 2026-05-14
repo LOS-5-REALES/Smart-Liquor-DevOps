@@ -1,34 +1,41 @@
 from sqlalchemy.orm import Session
-from database import SessionLocal # Sin el "app."
-import models                    # Sin el "app."
+from database import SessionLocal 
+import models
 from models import Producto, Cliente, Pedido, DetallePedido
 
-def crear_pedido_prueba():
+def crear_pedido_que_genera_alerta():
     db = SessionLocal()
     try:
-        print("--- 📡 Iniciando registro de pedido de prueba ---")
+        print("--- 📡 Iniciando Pedido de Agotamiento de Stock ---")
         
-        # 1. Buscar un producto existente (Tomaremos el primero: Johnnie Walker)
-        producto = db.query(Producto).first()
+        # 1. Buscar la Cachina específicamente
+        producto = db.query(Producto).filter(models.Producto.nombre == 'Cachina').first()
         if not producto:
-            print("❌ No hay productos en la base de datos. Agregue uno primero.")
+            print("❌ No se encontró el producto 'Cachina'.")
             return
 
-        # 2. Crear o buscar un Cliente
-        cliente = db.query(Cliente).filter(models.Cliente.telefono == "999888777").first()
+        # 2. Buscar o crear Cliente
+        cliente = db.query(Cliente).filter(models.Cliente.telefono == "999000111").first()
         if not cliente:
             cliente = Cliente(
-                nombre_completo="Bodega El Chinchano",
-                telefono="999888777",
-                direccion_exacta="Calle Lima 123, Chincha Alta",
-                referencia_ubicacion="Al costado del Banco de la Nación"
+                nombre_completo="Licorería El Paso - Chincha",
+                telefono="999000111",
+                direccion_exacta="Av. Benavides 456",
+                referencia_ubicacion="Frente al Grifo"
             )
             db.add(cliente)
-            db.flush() # Para obtener el ID del cliente
-            print(f"✅ Cliente creado: {cliente.nombre_completo}")
+            db.flush()
 
-        # 3. Crear el Pedido (Estado: RECIBIDO)
-        total = producto.precio_venta * 2 # Compra 2 unidades
+        # 3. Calcular cantidad para dejarlo en Stock Bajo (Menos de 10)
+        # Si tiene 35, vamos a pedir 28 para que queden 7.
+        cantidad_a_pedir = (producto.stock_actual - producto.stock_minimo) + 3 
+        
+        if producto.stock_actual < cantidad_a_pedir:
+            print(f"⚠️ No hay suficiente stock para generar la prueba. Stock actual: {producto.stock_actual}")
+            return
+
+        # 4. Crear el Pedido
+        total = producto.precio_venta * cantidad_a_pedir
         nuevo_pedido = Pedido(
             cliente_id=cliente.id,
             total_pedido=total,
@@ -37,27 +44,27 @@ def crear_pedido_prueba():
         db.add(nuevo_pedido)
         db.flush()
 
-        # 4. Crear el Detalle
+        # 5. Crear el Detalle
         detalle = DetallePedido(
             pedido_id=nuevo_pedido.id,
             producto_id=producto.id,
-            cantidad=2
+            cantidad=cantidad_a_pedir
         )
         db.add(detalle)
 
-        # 5. Restar el Stock físicamente
-        producto.stock_actual -= 2
-        print(f"📦 Stock de {producto.nombre} reducido a {producto.stock_actual}")
+        # 6. Restar el Stock (Esto disparará la alerta visual en la UI)
+        producto.stock_actual -= cantidad_a_pedir
+        print(f"📉 Venta realizada: {cantidad_a_pedir} unidades.")
+        print(f"🚨 NUEVO STOCK DE {producto.nombre}: {producto.stock_actual} (ALERTA ACTIVADA)")
 
         db.commit()
-        print(f"🚀 PEDIDO REGISTRADO EXITOSAMENTE (ID: {nuevo_pedido.id})")
-        print(f"💰 Total: S/ {total:.2f}")
+        print(f"✅ PEDIDO ID: {nuevo_pedido.id} REGISTRADO CON ÉXITO")
 
     except Exception as e:
         db.rollback()
-        print(f"❌ ERROR al insertar: {e}")
+        print(f"❌ ERROR: {e}")
     finally:
         db.close()
 
 if __name__ == "__main__":
-    crear_pedido_prueba()
+    crear_pedido_que_genera_alerta()
