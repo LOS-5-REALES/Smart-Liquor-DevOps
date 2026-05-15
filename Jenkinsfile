@@ -41,6 +41,7 @@ pipeline {
                 withCredentials([file(credentialsId: 'ssh-key-smartliquor', variable: 'SSH_KEY')]) {
                     bat """
                     set HOME=%cd%
+                    icacls %SSH_KEY% /inheritance:r /grant:r "%USERNAME%:R"
                     IF EXIST %SSH_KEY% (
                         echo "Conectando por SSH con clave privada..."
                         ssh -i %SSH_KEY% -o StrictHostKeyChecking=no smartliquor@57.156.66.168 ^
