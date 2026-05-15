@@ -46,7 +46,7 @@ pipeline {
                     icacls %SSH_KEY% /remove:g "BUILTIN\\Usuarios"
                     IF EXIST %SSH_KEY% (
                         echo "Conectando por SSH con clave privada..."
-                        ssh -i %SSH_KEY% -o StrictHostKeyChecking=no -o StrictModes=no smartliquor@57.156.66.168 ^
+                        ssh -i %SSH_KEY% -o StrictHostKeyChecking=no smartliquor@57.156.66.168 ^
                             "cd /home/smartliquor && git pull origin main && docker-compose -f docker/docker-compose.yml up -d --build"
                     ) ELSE (
                         echo "NO SE ENCONTRÓ EL ARCHIVO DE CLAVE PRIVADA"
