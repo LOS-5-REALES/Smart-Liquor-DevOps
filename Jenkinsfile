@@ -37,28 +37,26 @@ pipeline {
             }
         }
         stage('6.Despliegue remoto en VM (SSH manual / Windows)') {
-      steps {
+    steps {
         withCredentials([file(credentialsId: 'ssh-key-smartliquor', variable: 'SSH_KEY')]) {
             powershell """
-                # Copiar la clave a una ruta sin espacios
                 \$keyPath = "C:\\\\jenkins_key_tmp\\\\id_rsa"
                 New-Item -ItemType Directory -Force -Path "C:\\\\jenkins_key_tmp" | Out-Null
                 Copy-Item "\$env:SSH_KEY" \$keyPath -Force
 
-                # Quitar TODOS los permisos heredados y dejar solo SYSTEM y el usuario actual
-                \$acl = New-Object System.Security.AccessControl.FileSecurity
-                \$acl.SetAccessRuleProtection(\$true, \$false)
-                \$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-                    \$env:USERNAME, "FullControl", "Allow"
-                )
-                \$acl.AddAccessRule(\$rule)
-                Set-Acl -Path \$keyPath -AclObject \$acl
+                # Usar icacls directamente que es más confiable en Jenkins
+                icacls \$keyPath /inheritance:r | Out-Null
+                icacls \$keyPath /grant:r "SYSTEM:F" | Out-Null
+                icacls \$keyPath /grant:r "Administradores:F" | Out-Null
+                icacls \$keyPath /remove "BUILTIN\\\\Usuarios" | Out-Null
+                icacls \$keyPath /remove "Everyone" | Out-Null
 
-                # Ejecutar SSH
+                Write-Host "Permisos aplicados:"
+                icacls \$keyPath
+
                 ssh -i \$keyPath -o StrictHostKeyChecking=no smartliquor@57.156.66.168 `
                     "cd /home/smartliquor/Smart-Liquor-DevOps && git pull origin dev/dashboard-mejoras && docker-compose -f docker/docker-compose.yml down && docker-compose -f docker/docker-compose.yml up -d --build"
 
-                # Limpiar clave temporal
                 Remove-Item \$keyPath -Force
             """
         }
