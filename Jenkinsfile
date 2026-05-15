@@ -37,20 +37,23 @@ pipeline {
             }
         }
         // ---- ESTE ES EL NUEVO STAGE QUE AGREGA EL DEPLOY REMOTO ----
-        stage('6.Despliegue remoto en VM (SSH)') {
+        stage('6.Despliegue remoto en VM (SSH manual / Windows)') {
             steps {
-                echo 'Desplegando remotamente en la VM de Azure...'
-                sshagent(['ssh-vm-licores']) {
-                    // Cambia smartliquor, IP y ruta según tu configuración real
-                    bat '''
-                        ssh -o StrictHostKeyChecking=no smartliquor@57.156.66.168 
+                 withCredentials([file(credentialsId: 'ssh-key-smartliquor', variable: 'SSH_KEY')]) {
+                 bat """
+                set HOME=%cd%
+                IF EXIST %SSH_KEY% (
+                    echo "Conectando por SSH con clave privada..."
+                    ssh -i %SSH_KEY% -o StrictHostKeyChecking=no smartliquor@57.156.66.168 ^
                         "cd /home/smartliquor && git pull origin main && docker-compose -f docker/docker-compose.yml up -d --build"
-                    '''
-                    // Si Jenkins corre en Linux, usa 'sh' y elimina el ^ por \
-                }
+                ) ELSE (
+                    echo "NO SE ENCONTRÓ EL ARCHIVO DE CLAVE PRIVADA"
+                    exit /b 1
+                )
+            """
+                 }
             }
         }
-    }
 
     post {
         always {
