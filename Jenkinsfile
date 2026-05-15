@@ -7,6 +7,13 @@ pipeline {
     }
 
     stages {
+        stage('0. Encender VM Azure') {
+             steps {
+                echo 'Verificando que la VM este encendida...'
+                bat 'az vm start --name vm-smart-liquor --resource-group rg-smart-liquor'
+                bat 'timeout /t 60'
+             }
+        }
         stage('1.Preparar .env') {
             steps {
                 writeFile file: '.env', text: "DATABASE_URL=${env.DATABASE_URL}\n"
