@@ -37,25 +37,33 @@ pipeline {
             }
         }
         stage('6.Despliegue remoto en VM (SSH manual / Windows)') {
-            steps {
-                withCredentials([file(credentialsId: 'ssh-key-smartliquor', variable: 'SSH_KEY')]) {
-                    bat """
-                    set HOME=%cd%
-                    icacls %SSH_KEY% /inheritance:r /grant:r "%USERNAME%:R"
-                    icacls %SSH_KEY% /remove "BUILTIN\\Usuarios"
-                    icacls %SSH_KEY% /remove:g "BUILTIN\\Usuarios"
-                    IF EXIST %SSH_KEY% (
-                        echo "Conectando por SSH con clave privada..."
-                        ssh -i %SSH_KEY% -o StrictHostKeyChecking=no smartliquor@57.156.66.168 ^
-                            "cd /home/smartliquor && git pull origin main && docker-compose -f docker/docker-compose.yml up -d --build"
-                    ) ELSE (
-                        echo "NO SE ENCONTRÓ EL ARCHIVO DE CLAVE PRIVADA"
-                        exit /b 1
-                    )
-                    """
-                }
-            }
+      steps {
+        withCredentials([file(credentialsId: 'ssh-key-smartliquor', variable: 'SSH_KEY')]) {
+            powershell """
+                # Copiar la clave a una ruta sin espacios
+                \$keyPath = "C:\\\\jenkins_key_tmp\\\\id_rsa"
+                New-Item -ItemType Directory -Force -Path "C:\\\\jenkins_key_tmp" | Out-Null
+                Copy-Item "\$env:SSH_KEY" \$keyPath -Force
+
+                # Quitar TODOS los permisos heredados y dejar solo SYSTEM y el usuario actual
+                \$acl = New-Object System.Security.AccessControl.FileSecurity
+                \$acl.SetAccessRuleProtection(\$true, \$false)
+                \$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                    \$env:USERNAME, "FullControl", "Allow"
+                )
+                \$acl.AddAccessRule(\$rule)
+                Set-Acl -Path \$keyPath -AclObject \$acl
+
+                # Ejecutar SSH
+                ssh -i \$keyPath -o StrictHostKeyChecking=no smartliquor@57.156.66.168 `
+                    "cd /home/smartliquor/Smart-Liquor-DevOps && git pull origin dev/dashboard-mejoras && docker-compose -f docker/docker-compose.yml down && docker-compose -f docker/docker-compose.yml up -d --build"
+
+                # Limpiar clave temporal
+                Remove-Item \$keyPath -Force
+            """
         }
+    }
+}
     } // <---- ESTA LLAVE CIERRA LA SECCIÓN "stages" (¡IMPORTANTE!)
 
     post {
