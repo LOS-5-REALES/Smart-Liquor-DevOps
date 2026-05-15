@@ -36,24 +36,24 @@ pipeline {
                 bat "docker-compose -f ${COMPOSE_FILE} up -d"
             }
         }
-        // ---- ESTE ES EL NUEVO STAGE QUE AGREGA EL DEPLOY REMOTO ----
         stage('6.Despliegue remoto en VM (SSH manual / Windows)') {
             steps {
-                 withCredentials([file(credentialsId: 'ssh-key-smartliquor', variable: 'SSH_KEY')]) {
-                 bat """
-                set HOME=%cd%
-                IF EXIST %SSH_KEY% (
-                    echo "Conectando por SSH con clave privada..."
-                    ssh -i %SSH_KEY% -o StrictHostKeyChecking=no smartliquor@57.156.66.168 ^
-                        "cd /home/smartliquor && git pull origin main && docker-compose -f docker/docker-compose.yml up -d --build"
-                ) ELSE (
-                    echo "NO SE ENCONTRÓ EL ARCHIVO DE CLAVE PRIVADA"
-                    exit /b 1
-                )
-            """
-                 }
+                withCredentials([file(credentialsId: 'ssh-key-smartliquor', variable: 'SSH_KEY')]) {
+                    bat """
+                    set HOME=%cd%
+                    IF EXIST %SSH_KEY% (
+                        echo "Conectando por SSH con clave privada..."
+                        ssh -i %SSH_KEY% -o StrictHostKeyChecking=no smartliquor@57.156.66.168 ^
+                            "cd /home/smartliquor && git pull origin main && docker-compose -f docker/docker-compose.yml up -d --build"
+                    ) ELSE (
+                        echo "NO SE ENCONTRÓ EL ARCHIVO DE CLAVE PRIVADA"
+                        exit /b 1
+                    )
+                    """
+                }
             }
         }
+    } // <---- ESTA LLAVE CIERRA LA SECCIÓN "stages" (¡IMPORTANTE!)
 
     post {
         always {
