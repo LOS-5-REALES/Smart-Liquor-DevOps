@@ -43,8 +43,6 @@ async def main(page: ft.Page):
     inp_fecha_fin    = ft.TextField(label="Hasta (DD/MM/AAAA)", width=160, value="")
     txt_error_fecha  = ft.Text("", color="red", size=11)
 
-    
-
     def parsear_fecha(texto):
         texto = texto.strip()
         if not texto:
@@ -72,7 +70,6 @@ async def main(page: ft.Page):
             elif hasta and not desde and fh_solo <= hasta:
                 resultado.append(p)
         return resultado
-
 
     async def aplicar_filtro(e=None):
         txt_error_fecha.value = ""
