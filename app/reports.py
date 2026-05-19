@@ -5,6 +5,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 
+
 def generar_pdf_pedidos(pedidos, rango_fechas="Todas"):
     # Carpeta temporal para guardar el PDF antes de mostrarlo
     if not os.path.exists("static"):
@@ -18,7 +19,7 @@ def generar_pdf_pedidos(pedidos, rango_fechas="Todas"):
     elementos = []
 
     # Título y encabezado
-    elementos.append(Paragraph(f"Reporte de Pedidos - Smart Liquor", styles['Title']))
+    elementos.append(Paragraph(f"Reporte de Pedidos- Smart Liquor", styles['Title']))
     elementos.append(Paragraph(f"Filtro: {rango_fechas}", styles['Normal']))
     elementos.append(Paragraph(f"Generado el: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
     elementos.append(Spacer(1, 20))
