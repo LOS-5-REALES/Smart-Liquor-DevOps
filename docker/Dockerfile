@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 # 3. Directorio de trabajo dentro del contenedor
-WORKDIR /app
+WORKDIR /usr/src/bot
 
 # 4. Instalar dependencias del sistema necesarias para PostgreSQL y compilación
 RUN apt-get update && apt-get install -y \
@@ -18,13 +18,15 @@ RUN apt-get update && apt-get install -y \
 # Hacemos esto antes de copiar el código para aprovechar el "cache" de Docker
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install python-multipart 
 
-# 6. Copiar todo el contenido de la carpeta actual al contenedor
-COPY . .
+
+# 6. Copiar todo el contenido de la carpeta raiz al contenedor
+COPY . .  
 
 # 7. Exponer los puertos: 8502 para la Web (Flet) y 8000 para la API
-EXPOSE 8502
+#EXPOSE 8502
 EXPOSE 8000
 
 # 8. Comando para arrancar la aplicación
-CMD ["python", "app/main.py"]
+CMD ["python", "-m", "app.main"]

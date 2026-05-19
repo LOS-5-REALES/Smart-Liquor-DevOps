@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+twilio
 flet
 sqlalchemy
 psycopg2-binary
