@@ -9,13 +9,15 @@ pipeline {
     stages {
         stage('1.Preparar .env') {
             steps {
+                // Crea el archivo .env con la URL de tu database supabase
                 writeFile file: '.env', text: "DATABASE_URL=${env.DATABASE_URL}\n"
             }
         }
         stage('2.Calidad de Código (Linting)') {
             steps {
                 echo 'Validando estilo y sintaxis del código...'
-                bat 'flake8 .'
+                bat 'flake8 .' // Para Jenkins en Windows
+                // sh 'flake8 .' // Si tu Jenkins es Linux
             }
         }
         stage('3.Pruebas de Integración') {
@@ -68,6 +70,7 @@ pipeline {
         always {
             echo 'Finalizando pipeline, limpiando recursos...'
             // bat "docker-compose -f ${COMPOSE_FILE} down"
+            // sh "docker-compose -f ${COMPOSE_FILE} down"
         }
         failure {
             echo 'El pipeline falló. Revisa errores en las etapas anteriores.'

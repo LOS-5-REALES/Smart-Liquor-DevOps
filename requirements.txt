@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+twilio
 flet
 sqlalchemy
 psycopg2-binary
@@ -8,3 +9,4 @@ requests
 pytest
 flet-fastapi
 reportlab
+pytest
