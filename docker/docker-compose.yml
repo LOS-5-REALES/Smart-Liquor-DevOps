@@ -1,7 +1,8 @@
 version: "3.8"
 
 services:
-  # VOLVEMOS A CREAR LA DB LOCAL PARA NO DEPENDER DE NADIE
+
+  # ── Base de datos local ─────────────────────────────────────
   db:
     image: postgres:15-alpine
     container_name: liquor_db
@@ -12,6 +13,7 @@ services:
     ports:
       - "5432:5432"
 
+  # ── Dashboard administrativo (sin cambios) ──────────────────
   app:
     build:
       context: ..
@@ -23,6 +25,23 @@ services:
     env_file:
       - ../.env
     depends_on:
-      - db  # La app ahora espera a la DB local
+      - db
     volumes:
       - ..:/app
+    restart: always
+
+  # ── Bot de WhatsApp (servicio independiente) ────────────────
+  # Si este servicio falla, el dashboard sigue funcionando
+  whatsapp_bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile   # misma imagen que el dashboard
+    container_name: whatsapp_bot
+    ports:
+      - "8001:8001"
+    env_file:
+      - ../.env
+    depends_on:
+      - db
+    restart: always
+    command: python app/main_bot.py   # distinto punto de entrada
