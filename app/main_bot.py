@@ -1,6 +1,4 @@
-# app/main_bot.py  — Servidor INDEPENDIENTE solo para WhatsApp
-# Corre en puerto 8001, completamente separado del dashboard
-
+# app/main_bot.py
 import uvicorn
 from fastapi import FastAPI, Form, Response
 from bot import procesar_mensaje
@@ -11,15 +9,13 @@ app = FastAPI()
 
 @app.get("/")
 def health_check():
-    """Endpoint para verificar que el bot está vivo."""
     return {"status": "Bot WhatsApp operativo"}
 
 
 @app.post("/whatsapp")
 async def whatsapp_webhook(Body: str = Form(...), From: str = Form("")):
-    """Recibe mensajes de Twilio y responde con TwiML."""
     print(f"[WHATSAPP] De: {From} | Mensaje: {Body}")
-    respuesta_xml = procesar_mensaje(Body)
+    respuesta_xml = procesar_mensaje(Body, telefono=From)
     return Response(content=respuesta_xml, media_type="application/xml")
 
 
