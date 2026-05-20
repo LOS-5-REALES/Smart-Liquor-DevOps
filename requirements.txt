@@ -8,3 +8,5 @@ requests
 pytest
 flet-fastapi
 reportlab
+twilio>=8.0.0
+
