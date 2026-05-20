@@ -9,4 +9,6 @@ pytest
 flet-fastapi
 reportlab
 twilio>=8.0.0
+python-multipart>=0.0.6
+
 
