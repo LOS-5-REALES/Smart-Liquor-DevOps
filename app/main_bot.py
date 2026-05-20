@@ -15,7 +15,7 @@ def health_check():
 @app.post("/whatsapp")
 async def whatsapp_webhook(Body: str = Form(...), From: str = Form("")):
     print(f"[WHATSAPP] De: {From} | Mensaje: {Body}")
-    respuesta_xml = procesar_mensaje(Body, telefono=From)
+    respuesta_xml = procesar_mensaje(Body)
     return Response(content=respuesta_xml, media_type="application/xml")
 
 
