@@ -20,7 +20,7 @@ async def whatsapp_webhook(Body: str = Form(...), From: str = Form("")):
     """Recibe mensajes de Twilio y responde con TwiML."""
     print(f"[WHATSAPP] De: {From} | Mensaje: {Body}")
     respuesta_xml = procesar_mensaje(Body)
-    return Response(content=respuesta_xml, smedia_type="application/xml")
+    return Response(content=respuesta_xml, media_type="application/xml")
 
 
 if __name__ == "__main__":
