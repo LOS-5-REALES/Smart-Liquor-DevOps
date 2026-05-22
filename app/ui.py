@@ -506,7 +506,9 @@ async def main(page: ft.Page):
             ventas = sum(p.total_pedido for p in peds if p.total_pedido)
             txt_ventas.value  = f"S/ {ventas:,.2f}"
 
-            await construir_lista_pedidos(filtrar_pedidos_por_fecha(peds))
+            await construir_lista_pedidos(
+                filtrar_pedidos_por_fecha(peds, inp_fecha_inicio.value, inp_fecha_fin.value)
+            )
 
             lista_inventario_ui.controls.clear()
             for pr in prods:
