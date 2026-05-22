@@ -75,7 +75,8 @@ pipeline {
                     // ── Tiempo de inicio del build actual ──────────────
                     def buildStart    = currentBuild.startTimeInMillis
                     def buildEnd      = System.currentTimeMillis()
-                    def leadTimeMin   = Math.round((buildEnd - buildStart) / 1000 / 60 * 100) / 100.0
+                    def leadTimeSeg  = (long)((buildEnd - buildStart) / 1000)
+                    def leadTimeMin   = "${leadTimeSeg / 60}.${(leadTimeSeg % 60)}"
 
                     // ── Historial de builds para calcular métricas ─────
                     def builds        = currentBuild.rawBuild.parent.builds
@@ -84,9 +85,7 @@ pipeline {
                     def successBuilds = builds.count { it.result?.toString() == 'SUCCESS' }
 
                     // ── Change Failure Rate ────────────────────────────
-                    def failureRate =  totalBuilds > 0 
-                        ? Math.round((failedBuilds / totalBuilds) * 1000) / 10.0
-                        : 0
+                    def failureRate =   totalBuilds > 0 ? ((failedBuilds * 100) / totalBuilds) : 0
 
                     // ── Deployment Frequency ───────────────────────────
                     // Builds exitosos en los últimos 7 días
@@ -98,7 +97,11 @@ pipeline {
 
                     // ── MTTR (Mean Time to Recovery) ───────────────────
                     // Tiempo promedio entre un fallo y el siguiente éxito
-                    def mttrMin = recoveries.size() > 0 ? Math.round(recoveries.sum() / recoveries.size() * 10) / 10.0 : 0
+                    def mttrMin = 0
+                        if (recoveries.size() > 0) {
+                        def sumaRecoveries = (long) recoveries.sum()
+                        mttrMin = sumaRecoveries / recoveries.size()
+                        }
                     def recoveries = []
                     def buildList = builds.toList().reverse() // orden cronológico
 
