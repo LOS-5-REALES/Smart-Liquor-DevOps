@@ -17,21 +17,21 @@ pipeline {
             }
         }
 
-        stage('2. Calidad de Código (Linting)') {
+        stage('2. Calidad de Codigo (Linting)') {
             steps {
-                echo 'Validando estilo y sintaxis del código...'
+                echo 'Validando estilo y sintaxis del codigo...'
                 bat 'flake8 .'
             }
         }
 
-        stage('3. Pruebas de Integración') {
+        stage('3. Pruebas de Integracion') {
             steps {
-                echo "Ejecutando pruebas de integración..."
+                echo "Ejecutando pruebas de integracion..."
                 bat 'if exist tests\\integration pytest tests\\integration || exit /b 0'
             }
         }
 
-        stage('4. Construcción (Docker)') {
+        stage('4. Construccion (Docker)') {
             steps {
                 echo 'Generando imagen de contenedor...'
                 bat "docker-compose -f ${COMPOSE_FILE} build"
@@ -68,92 +68,79 @@ pipeline {
             }
         }
 
-        stage('7. Métricas DORA') {
+        stage('7. Metricas DORA') {
             steps {
-                echo '📊 Calculando métricas DORA...'
+                echo 'Calculando metricas DORA...'
                 script {
-                    // ── Tiempo de inicio del build actual ──────────────
-                    def buildStart    = currentBuild.startTimeInMillis
-                    def buildEnd      = System.currentTimeMillis()
+
+                    // Lead Time — tiempo de este pipeline en segundos enteros
+                    def buildStart   = currentBuild.startTimeInMillis
+                    def buildEnd     = System.currentTimeMillis()
                     def leadTimeSeg  = (long)((buildEnd - buildStart) / 1000)
-                    def leadTimeMin   = "${leadTimeSeg / 60}.${(leadTimeSeg % 60)}"
+                    def leadTimeMin  = (int)(leadTimeSeg / 60)
+                    def leadTimeSec  = (int)(leadTimeSeg % 60)
 
-                    // ── Historial de builds para calcular métricas ─────
-                    def builds        = currentBuild.rawBuild.parent.builds
-                    def totalBuilds   = builds.size()
-                    def failedBuilds  = builds.count { it.result?.toString() == 'FAILURE' }
-                    def successBuilds = builds.count { it.result?.toString() == 'SUCCESS' }
+                    // Historial de builds
+                    def builds       = currentBuild.rawBuild.parent.builds
+                    def totalBuilds  = (int) builds.size()
+                    def failedBuilds = (int) builds.count { it.result?.toString() == 'FAILURE' }
 
-                    // ── Change Failure Rate ────────────────────────────
-                    def failureRate =   totalBuilds > 0 ? ((failedBuilds * 100) / totalBuilds) : 0
+                    // Change Failure Rate (entero, sin decimales)
+                    def failureRate  = totalBuilds > 0 ? (int)((failedBuilds * 100) / totalBuilds) : 0
 
-                    // ── Deployment Frequency ───────────────────────────
-                    // Builds exitosos en los últimos 7 días
-                    def hace7dias     = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
-                    def deploysUltSemana = builds.count {
+                    // Deployment Frequency — builds exitosos en los ultimos 7 dias
+                    def hace7dias        = System.currentTimeMillis() - (7L * 24 * 60 * 60 * 1000)
+                    def deploysUltSemana = (int) builds.count {
                         it.result?.toString() == 'SUCCESS' &&
                         it.startTimeInMillis > hace7dias
                     }
 
-                    // ── MTTR (Mean Time to Recovery) ───────────────────
-                    // Tiempo promedio entre un fallo y el siguiente éxito
-                    def mttrMin = 0
-                        if (recoveries.size() > 0) {
-                        def sumaRecoveries = (long) recoveries.sum()
-                        mttrMin = sumaRecoveries / recoveries.size()
-                        }
+                    // MTTR — tiempo promedio entre fallo y siguiente exito (en minutos enteros)
                     def recoveries = []
-                    def buildList = builds.toList().reverse() // orden cronológico
+                    def buildList  = builds.toList().reverse()
 
                     for (int i = 0; i < buildList.size() - 1; i++) {
                         if (buildList[i].result?.toString() == 'FAILURE') {
                             for (int j = i + 1; j < buildList.size(); j++) {
                                 if (buildList[j].result?.toString() == 'SUCCESS') {
-                                    def diff = (buildList[j].startTimeInMillis - buildList[i].startTimeInMillis) / 1000 / 60
+                                    long diff = (long)((buildList[j].startTimeInMillis - buildList[i].startTimeInMillis) / 1000 / 60)
                                     recoveries.add(diff)
                                     break
                                 }
                             }
                         }
                     }
+
+                    def mttrMin = 0
                     if (recoveries.size() > 0) {
-                        mttrMin = (recoveries.sum() / recoveries.size()).round(1)
+                        long suma = 0L
+                        for (long v : recoveries) { suma += v }
+                        mttrMin = (int)(suma / recoveries.size())
                     }
 
-                    // ── Nivel de rendimiento según DORA ───────────────
+                    // Nivel de rendimiento DORA
                     def nivel = ""
                     if (deploysUltSemana >= 7 && failureRate < 15 && leadTimeMin < 15) {
-                        nivel = "🏆 ELITE"
+                        nivel = "ELITE"
                     } else if (deploysUltSemana >= 3 && failureRate < 30 && leadTimeMin < 60) {
-                        nivel = "✅ HIGH"
+                        nivel = "HIGH"
                     } else if (deploysUltSemana >= 1 && failureRate < 45) {
-                        nivel = "⚠️ MEDIUM"
+                        nivel = "MEDIUM"
                     } else {
-                        nivel = "❌ LOW"
+                        nivel = "LOW"
                     }
 
-                    // ── Imprimir reporte ───────────────────────────────
-                    echo """
-╔══════════════════════════════════════════════╗
-║         📊 MÉTRICAS DORA - Smart-Liquor      ║
-╠══════════════════════════════════════════════╣
-║  🚀 Deployment Frequency                     ║
-║     Deploys exitosos (últimos 7 días): ${deploysUltSemana}    ║
-╠══════════════════════════════════════════════╣
-║  ⏱️  Lead Time for Changes                   ║
-║     Tiempo de este pipeline: ${leadTimeMin} min         ║
-╠══════════════════════════════════════════════╣
-║  💥 Change Failure Rate                      ║
-║     Fallos: ${failedBuilds}/${totalBuilds} builds = ${failureRate}%          ║
-╠══════════════════════════════════════════════╣
-║  🔧 Mean Time to Recovery (MTTR)             ║
-║     Tiempo promedio de recuperación: ${mttrMin} min  ║
-╠══════════════════════════════════════════════╣
-║  🎯 Nivel de Rendimiento DevOps: ${nivel}    ║
-╚══════════════════════════════════════════════╝
-                    """
+                    // Reporte en consola
+                    echo "========================================"
+                    echo "   METRICAS DORA - Smart-Liquor"
+                    echo "========================================"
+                    echo "  Deployment Frequency (7 dias): ${deploysUltSemana} deploys"
+                    echo "  Lead Time: ${leadTimeMin} min ${leadTimeSec} seg"
+                    echo "  Change Failure Rate: ${failureRate}% (${failedBuilds}/${totalBuilds})"
+                    echo "  MTTR: ${mttrMin} minutos promedio"
+                    echo "  Nivel DevOps: ${nivel}"
+                    echo "========================================"
 
-                    // Guardar métricas como propiedades del build
                     currentBuild.description = "DORA: ${nivel} | Lead: ${leadTimeMin}min | Failure: ${failureRate}% | Deploys/semana: ${deploysUltSemana}"
                 }
             }
@@ -162,17 +149,13 @@ pipeline {
 
     post {
         success {
-            echo '✅ Pipeline completado — Smart-Liquor desplegado en http://57.156.66.168:8000'
+            echo 'Pipeline completado - Smart-Liquor desplegado en http://57.156.66.168:8000'
         }
         failure {
-            echo '❌ Pipeline falló — revisar logs arriba'
-            script {
-                echo "⏰ Fallo registrado a las: ${new Date()}"
-                echo "📌 Calcula el MTTR desde este momento hasta el próximo build exitoso."
-            }
+            echo 'Pipeline fallo - revisar logs arriba'
         }
         always {
-            echo '📋 Historial disponible en Jenkins para análisis DORA'
+            echo 'Historial disponible en Jenkins para analisis DORA'
         }
     }
 }
