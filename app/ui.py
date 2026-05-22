@@ -1,3 +1,4 @@
+# app/ui.py
 import asyncio
 from datetime import datetime
 import flet as ft
@@ -6,6 +7,8 @@ from database import engine
 import models
 import crud
 from reports import generar_pdf_pedidos
+from utils import parsear_fecha, filtrar_pedidos_por_fecha
+from constants import ESTADOS_LOGISTICOS
 
 
 async def run_db(fn):
@@ -13,15 +16,6 @@ async def run_db(fn):
         with Session(engine) as db:
             return fn(db)
     return await asyncio.to_thread(_execute)
-
-
-COLORES_ESTADO = {
-    "recibido":  "#f57c00",
-    "en ruta":   "#1565c0",
-    "en camino": "#1565c0",
-    "entregado": "#2e7d32",
-    "cancelado": "#c62828",
-}
 
 
 async def main(page: ft.Page):
@@ -43,34 +37,6 @@ async def main(page: ft.Page):
     inp_fecha_fin    = ft.TextField(label="Hasta (DD/MM/AAAA)", width=160, value="")
     txt_error_fecha  = ft.Text("", color="red", size=11)
 
-    def parsear_fecha(texto):
-        texto = texto.strip()
-        if not texto:
-            return None
-        try:
-            return datetime.strptime(texto, "%d/%m/%Y")
-        except ValueError:
-            return None
-
-    def filtrar_pedidos(peds):
-        desde = parsear_fecha(inp_fecha_inicio.value)
-        hasta = parsear_fecha(inp_fecha_fin.value)
-        if not desde and not hasta:
-            return peds
-        resultado = []
-        for p in peds:
-            if not p.fecha_hora:
-                continue
-            fh = p.fecha_hora if isinstance(p.fecha_hora, datetime) else datetime.fromisoformat(str(p.fecha_hora))
-            fh_solo = fh.replace(hour=0, minute=0, second=0, microsecond=0)
-            if desde and hasta and desde <= fh_solo <= hasta:
-                resultado.append(p)
-            elif desde and not hasta and fh_solo >= desde:
-                resultado.append(p)
-            elif hasta and not desde and fh_solo <= hasta:
-                resultado.append(p)
-        return resultado
-
     async def aplicar_filtro(e=None):
         txt_error_fecha.value = ""
         desde = parsear_fecha(inp_fecha_inicio.value)
@@ -79,16 +45,24 @@ async def main(page: ft.Page):
             txt_error_fecha.value = "La fecha inicio no puede ser mayor que la fecha fin."
             await page.update_async()
             return
-        await construir_lista_pedidos(filtrar_pedidos(_todos_los_pedidos))
+
+        pedidos_filtrados = filtrar_pedidos_por_fecha(
+            _todos_los_pedidos,
+            inp_fecha_inicio.value,
+            inp_fecha_fin.value
+        )
+        await construir_lista_pedidos(pedidos_filtrados)
         await page.update_async()
 
     async def ejecutar_reporte_pdf(e):
         txt_error_fecha.value = "⏳ Generando reporte..."
         await page.update_async()
         try:
-            from reports import generar_pdf_pedidos
-            # Usamos los pedidos que están cargados actualmente
-            pedidos_para_pdf = filtrar_pedidos(_todos_los_pedidos)
+            pedidos_para_pdf = filtrar_pedidos_por_fecha(
+                _todos_los_pedidos,
+                inp_fecha_inicio.value,
+                inp_fecha_fin.value
+            )
             
             if not pedidos_para_pdf:
                 txt_error_fecha.value = "⚠️ No hay pedidos en este rango."
@@ -401,7 +375,8 @@ async def main(page: ft.Page):
             nombre_cliente = p.cliente.nombre_completo if p.cliente else "Anonimo"
             total          = p.total_pedido or 0.0
             estado_actual  = p.estado_logistico or "recibido"
-            color_estado   = COLORES_ESTADO.get(estado_actual, "grey")
+            datos_estado = ESTADOS_LOGISTICOS.get(estado_actual, {"color": "grey", "label": "Desconocido"})
+            color_estado   = datos_estado["color"]
 
             fecha_str = ""
             if p.fecha_hora:
@@ -453,21 +428,22 @@ async def main(page: ft.Page):
 
             btn_expand.on_click = toggle
 
+            opciones_dropdown = [
+                ft.dropdown.Option(key=clave, text=datos["label"])
+                for clave, datos in ESTADOS_LOGISTICOS.items()
+            ]
+
             dropdown_estado = ft.Dropdown(
                 value=estado_actual, width=140,
                 content_padding=ft.padding.symmetric(horizontal=10, vertical=4),
-                options=[
-                    ft.dropdown.Option(key="recibido",  text="Recibido"),
-                    ft.dropdown.Option(key="en camino", text="En camino"),
-                    ft.dropdown.Option(key="entregado", text="Entregado"),
-                    ft.dropdown.Option(key="cancelado", text="Cancelado"),
-                ],
+                options=opciones_dropdown,
                 border_color=color_estado, color="white", bgcolor="#0b0d0f",
             )
 
             async def _on_estado_change(e, pid: int, _dd=dropdown_estado):
                 nuevo = e.control.value
-                _dd.border_color = COLORES_ESTADO.get(nuevo, "grey")
+                nuevo_color = ESTADOS_LOGISTICOS.get(nuevo, {"color": "grey"})["color"]
+                _dd.border_color = nuevo_color
                 await page.update_async()
                 await cambiar_estado(pid, nuevo)
 
@@ -530,7 +506,7 @@ async def main(page: ft.Page):
             ventas = sum(p.total_pedido for p in peds if p.total_pedido)
             txt_ventas.value  = f"S/ {ventas:,.2f}"
 
-            await construir_lista_pedidos(filtrar_pedidos(peds))
+            await construir_lista_pedidos(filtrar_pedidos_por_fecha(peds))
 
             lista_inventario_ui.controls.clear()
             for pr in prods:

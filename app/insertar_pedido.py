@@ -1,13 +1,36 @@
+# app/insertar_pedido.py
+"""
+Script utilitario de simulación y pruebas (Mock).
+
+Este archivo no se ejecuta en producción. Se utiliza exclusivamente en
+entornos de desarrollo para inyectar datos de prueba en la base de datos
+y verificar que las alertas visuales de la interfaz gráfica (Flet)
+reaccionen correctamente ante un evento de falta de inventario.
+"""
+
 from sqlalchemy.orm import Session
-from database import SessionLocal 
+from database import SessionLocal
 import models
 from models import Producto, Cliente, Pedido, DetallePedido
 
+
 def crear_pedido_que_genera_alerta():
+    """
+    Simula una venta masiva para forzar el agotamiento de stock.
+
+    El algoritmo busca el producto 'Cachina', calcula exactamente cuántas
+    unidades debe comprar para que el inventario restante quede 3 unidades
+    por debajo del `stock_minimo`, y registra la orden a nombre de un
+    cliente de prueba.
+
+    Outputs:
+        Imprime en consola (stdout) el proceso paso a paso y el resultado
+        final de la transacción. No retorna valores.
+    """
     db = SessionLocal()
     try:
         print("--- 📡 Iniciando Pedido de Agotamiento de Stock ---")
-        
+
         # 1. Buscar la Cachina específicamente
         producto = db.query(Producto).filter(models.Producto.nombre == 'Cachina').first()
         if not producto:
@@ -28,8 +51,8 @@ def crear_pedido_que_genera_alerta():
 
         # 3. Calcular cantidad para dejarlo en Stock Bajo (Menos de 10)
         # Si tiene 35, vamos a pedir 28 para que queden 7.
-        cantidad_a_pedir = (producto.stock_actual - producto.stock_minimo) + 3 
-        
+        cantidad_a_pedir = (producto.stock_actual - producto.stock_minimo) + 3
+
         if producto.stock_actual < cantidad_a_pedir:
             print(f"⚠️ No hay suficiente stock para generar la prueba. Stock actual: {producto.stock_actual}")
             return
@@ -65,6 +88,7 @@ def crear_pedido_que_genera_alerta():
         print(f"❌ ERROR: {e}")
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     crear_pedido_que_genera_alerta()

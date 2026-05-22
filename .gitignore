@@ -37,3 +37,7 @@ infra/*.tfstate.backup
 
 # --- REPORTE- --
 static/*.pdf
+
+# --- IDEs ---
+.vscode/
+.idea/

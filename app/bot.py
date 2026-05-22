@@ -1,4 +1,12 @@
 # app/bot.py
+"""
+Módulo del Bot de WhatsApp.
+
+Gestiona el flujo de conversación automatizada con los clientes a través
+de Twilio. Mantiene el estado de la conversación en memoria y se conecta
+con la base de datos para leer el catálogo y registrar nuevos pedidos.
+"""
+
 from twilio.twiml.messaging_response import MessagingResponse
 from sqlalchemy.orm import Session
 from database import engine
@@ -9,14 +17,33 @@ import models
 sesiones = {}
 
 
-def obtener_catalogo():
+def obtener_catalogo() -> list:
+    """
+        Recupera los productos disponibles para mostrarlos en WhatsApp.
+
+        Excluye automáticamente aquellos productos que han sido marcados
+        como "[DESCONTINUADO]" mediante borrado lógico.
+
+        Returns:
+            list[models.Producto]: Lista de productos activos.
+    """
     with Session(engine) as db:
         return db.query(models.Producto).filter(
             ~models.Producto.nombre.startswith("[DESCONTINUADO]")
         ).all()
 
 
-def obtener_o_crear_cliente(telefono: str):
+def obtener_o_crear_cliente(telefono: str) -> tuple[int, str]:
+    """
+        Busca al cliente por su número telefónico o lo registra si es nuevo.
+
+        Args:
+            telefono (str): Número de teléfono del cliente (ej. "whatsapp:+51999999999").
+
+        Returns:
+            tuple[int, str]: Una tupla conteniendo el ID generado en la base de datos
+                             y el nombre del cliente.
+    """
     with Session(engine) as db:
         cliente = db.query(models.Cliente).filter(
             models.Cliente.telefono == telefono
@@ -32,7 +59,24 @@ def obtener_o_crear_cliente(telefono: str):
         return cliente.id, cliente.nombre_completo
 
 
-def registrar_pedido(cliente_id: int, producto_id: int, cantidad: int):
+def registrar_pedido(cliente_id: int, producto_id: int, cantidad: int) -> tuple[bool, float | str]:
+    """
+        Crea un nuevo pedido en el sistema restando el stock correspondiente.
+
+        Valida que exista suficiente inventario físico antes de aceptar la orden.
+        Si la venta hace que el producto caiga por debajo de su stock mínimo,
+        activa la `alerta_roja` para notificar al administrador en el dashboard.
+
+        Args:
+            cliente_id (int): El ID del cliente que realiza la compra.
+            producto_id (int): El ID del producto deseado.
+            cantidad (int): Número de unidades solicitadas.
+
+        Returns:
+            tuple[bool, float | str]:
+                - (True, total_calculado) si el pedido fue exitoso.
+                - (False, mensaje_de_error) si no hay stock o el producto no existe.
+    """
     with Session(engine) as db:
         producto = db.query(models.Producto).filter(
             models.Producto.id == producto_id
@@ -67,7 +111,13 @@ def registrar_pedido(cliente_id: int, producto_id: int, cantidad: int):
         return True, total
 
 
-def menu_principal():
+def menu_principal() -> str:
+    """
+        Genera el texto inicial del menú principal del bot.
+
+        Returns:
+            str: Cadena de texto preformateada para enviar por WhatsApp.
+    """
     return (
         "👋 *Bienvenido a Smart-Liquor* 🍷\n\n"
         "¿Qué deseas hacer?\n\n"
@@ -79,10 +129,20 @@ def menu_principal():
     )
 
 
-def procesar_mensaje(cuerpo_mensaje: str):
+def procesar_mensaje(cuerpo_mensaje: str) -> str:
     """
-    Bot con flujo guiado — el cliente solo responde con números.
-    El estado se guarda en memoria (sesiones).
+    Motor principal del flujo del chatbot.
+
+    Recibe el texto del usuario, evalúa el estado actual de la conversación
+    en la variable global `sesiones` y determina la respuesta apropiada
+    utilizando TwiML (lenguaje de marcado de Twilio).
+
+    Args:
+        cuerpo_mensaje (str): El texto exacto que el usuario escribió en WhatsApp.
+
+    Returns:
+        str: La respuesta generada en formato XML (TwiML) lista para ser
+             entregada a la API de Twilio.
     """
     # Twilio envía el número como "whatsapp:+51999..."
     # Como no recibimos el teléfono aquí usamos un key genérico
