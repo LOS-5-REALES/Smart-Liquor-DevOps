@@ -69,82 +69,74 @@ pipeline {
         }
 
         stage('7. Metricas DORA') {
-            steps {
-                echo 'Calculando metricas DORA...'
-                script {
+    steps {
+        echo 'Calculando metricas DORA...'
+        script {
+            // Lead Time — tiempo de este pipeline
+            def buildStart  = currentBuild.startTimeInMillis
+            def buildEnd    = System.currentTimeMillis()
+            def leadTimeSeg = (long)((buildEnd - buildStart) / 1000)
+            def leadTimeMin = (int)(leadTimeSeg / 60)
+            def leadTimeSec = (int)(leadTimeSeg % 60)
 
-                    // Lead Time — tiempo de este pipeline en segundos enteros
-                    def buildStart   = currentBuild.startTimeInMillis
-                    def buildEnd     = System.currentTimeMillis()
-                    def leadTimeSeg  = (long)((buildEnd - buildStart) / 1000)
-                    def leadTimeMin  = (int)(leadTimeSeg / 60)
-                    def leadTimeSec  = (int)(leadTimeSeg % 60)
+            // Numero de build actual como referencia
+            def buildNum    = currentBuild.number
 
-                    // Historial de builds
-                    def builds       = currentBuild.rawBuild.parent.builds
-                    def totalBuilds  = (int) builds.size()
-                    def failedBuilds = (int) builds.count { it.result?.toString() == 'FAILURE' }
+            // Sin rawBuild: usamos solo currentBuild que si esta permitido
+            // Deployment Frequency: aproximado por numero de build en la semana
+            // (1 build por ejecucion del pipeline)
+            def deploysUltSemana = buildNum > 7 ? 7 : buildNum
 
-                    // Change Failure Rate (entero, sin decimales)
-                    def failureRate  = totalBuilds > 0 ? (int)((failedBuilds * 100) / totalBuilds) : 0
+            // Change Failure Rate: calculado del resultado del build actual
+            // y los anteriores usando currentBuild.previousBuild
+            def totalBuilds  = 0
+            def failedBuilds = 0
+            def build = currentBuild
 
-                    // Deployment Frequency — builds exitosos en los ultimos 7 dias
-                    def hace7dias        = System.currentTimeMillis() - (7L * 24 * 60 * 60 * 1000)
-                    def deploysUltSemana = (int) builds.count {
-                        it.result?.toString() == 'SUCCESS' &&
-                        it.startTimeInMillis > hace7dias
-                    }
-
-                    // MTTR — tiempo promedio entre fallo y siguiente exito (en minutos enteros)
-                    def recoveries = []
-                    def buildList  = builds.toList().reverse()
-
-                    for (int i = 0; i < buildList.size() - 1; i++) {
-                        if (buildList[i].result?.toString() == 'FAILURE') {
-                            for (int j = i + 1; j < buildList.size(); j++) {
-                                if (buildList[j].result?.toString() == 'SUCCESS') {
-                                    long diff = (long)((buildList[j].startTimeInMillis - buildList[i].startTimeInMillis) / 1000 / 60)
-                                    recoveries.add(diff)
-                                    break
-                                }
-                            }
-                        }
-                    }
-
-                    def mttrMin = 0
-                    if (recoveries.size() > 0) {
-                        long suma = 0L
-                        for (long v : recoveries) { suma += v }
-                        mttrMin = (int)(suma / recoveries.size())
-                    }
-
-                    // Nivel de rendimiento DORA
-                    def nivel = ""
-                    if (deploysUltSemana >= 7 && failureRate < 15 && leadTimeMin < 15) {
-                        nivel = "ELITE"
-                    } else if (deploysUltSemana >= 3 && failureRate < 30 && leadTimeMin < 60) {
-                        nivel = "HIGH"
-                    } else if (deploysUltSemana >= 1 && failureRate < 45) {
-                        nivel = "MEDIUM"
-                    } else {
-                        nivel = "LOW"
-                    }
-
-                    // Reporte en consola
-                    echo "========================================"
-                    echo "   METRICAS DORA - Smart-Liquor"
-                    echo "========================================"
-                    echo "  Deployment Frequency (7 dias): ${deploysUltSemana} deploys"
-                    echo "  Lead Time: ${leadTimeMin} min ${leadTimeSec} seg"
-                    echo "  Change Failure Rate: ${failureRate}% (${failedBuilds}/${totalBuilds})"
-                    echo "  MTTR: ${mttrMin} minutos promedio"
-                    echo "  Nivel DevOps: ${nivel}"
-                    echo "========================================"
-
-                    currentBuild.description = "DORA: ${nivel} | Lead: ${leadTimeMin}min | Failure: ${failureRate}% | Deploys/semana: ${deploysUltSemana}"
+            while (build != null && totalBuilds < 20) {
+                totalBuilds++
+                if (build.result == 'FAILURE') {
+                    failedBuilds++
                 }
+                build = build.previousBuild
             }
+
+            def failureRate = totalBuilds > 0 ? (int)((failedBuilds * 100) / totalBuilds) : 0
+
+            // MTTR: tiempo desde el ultimo fallo hasta este build exitoso
+            def mttrMin = 0
+            def prev = currentBuild.previousBuild
+            if (prev != null && prev.result == 'FAILURE') {
+                long diff = (long)((currentBuild.startTimeInMillis - prev.startTimeInMillis) / 1000 / 60)
+                mttrMin = (int) diff
+            }
+
+            // Nivel DORA
+            def nivel = ""
+            if (deploysUltSemana >= 7 && failureRate < 15 && leadTimeMin < 15) {
+                nivel = "ELITE"
+            } else if (deploysUltSemana >= 3 && failureRate < 30 && leadTimeMin < 60) {
+                nivel = "HIGH"
+            } else if (deploysUltSemana >= 1 && failureRate < 45) {
+                nivel = "MEDIUM"
+            } else {
+                nivel = "LOW"
+            }
+
+            echo "========================================"
+            echo "   METRICAS DORA - Smart-Liquor"
+            echo "========================================"
+            echo "  Deployment Frequency (aprox): ${deploysUltSemana} deploys"
+            echo "  Lead Time: ${leadTimeMin} min ${leadTimeSec} seg"
+            echo "  Change Failure Rate: ${failureRate}% (${failedBuilds}/${totalBuilds})"
+            echo "  MTTR: ${mttrMin} minutos"
+            echo "  Nivel DevOps: ${nivel}"
+            echo "========================================"
+
+            currentBuild.description = "DORA: ${nivel} | Lead: ${leadTimeMin}min | Failure: ${failureRate}% | Deploys: ${deploysUltSemana}"
         }
+    }
+}
     }
 
     post {
