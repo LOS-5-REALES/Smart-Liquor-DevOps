@@ -1,5 +1,6 @@
 # app/ui.py
 import asyncio
+import os
 from datetime import datetime
 import flet as ft
 from sqlalchemy.orm import Session, joinedload
@@ -8,6 +9,7 @@ import models
 import crud
 from reports import generar_pdf_pedidos
 from utils import parsear_fecha, filtrar_pedidos_por_fecha
+from constants import ESTADOS_LOGISTICOS
 from componentes import (
     build_metricas,
     build_filtro_fecha,
@@ -18,6 +20,7 @@ from componentes import (
     build_fila_inventario,
 )
 
+import os
 
 async def run_db(fn):
     def _execute():
@@ -38,7 +41,7 @@ async def main(page: ft.Page):
     _todos_los_pedidos  = []
 
     # ── Metricas ──────────────────────────────────────────────
-    txt_ventas, txt_pedidos, txt_alertas, row_metricas = build_metricas()
+    txt_ventas, txt_pedidos, txt_alertas, txt_pendientes, txt_entregados, row_metricas = build_metricas()
 
     # ── Modales ───────────────────────────────────────────────
     modal_suministro, abrir_suministro = build_modal_suministro(
@@ -133,7 +136,9 @@ async def main(page: ft.Page):
                 if inp_fecha_inicio.value else "General"
             )
             nombre_archivo = generar_pdf_pedidos(pedidos_para_pdf, rango)
-            await page.launch_url_async(f"http://localhost:8000/static/{nombre_archivo}")
+            import os
+            BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+            await page.launch_url_async(f"{BASE_URL}/static/{nombre_archivo}")
             txt_error_fecha.value = "Reporte generado."
         except Exception as ex:
             txt_error_fecha.value = f"Error PDF: {ex}"
@@ -144,7 +149,7 @@ async def main(page: ft.Page):
         await construir_lista_pedidos(_todos_los_pedidos)
         await page.update_async()
 
-    inp_fecha_inicio, inp_fecha_fin, txt_error_fecha, row_filtro = build_filtro_fecha(
+    inp_fecha_inicio, inp_fecha_fin, txt_error_fecha, col_filtro = build_filtro_fecha(
         on_filtrar=aplicar_filtro,
         on_pdf=ejecutar_reporte_pdf,
         on_limpiar=limpiar_filtro,
@@ -169,14 +174,29 @@ async def main(page: ft.Page):
             _todos_los_pedidos = peds
 
             # Actualizar metricas
+            peds_filtrados = filtrar_pedidos_por_fecha(
+            peds, inp_fecha_inicio.value, inp_fecha_fin.value
+            )
+
             criticos = [
                 p for p in prods
                 if (p.stock_actual or 0) <= (p.stock_minimo or 10)
             ]
-            txt_alertas.value = str(len(criticos))
-            txt_pedidos.value = str(len(peds))
-            ventas = sum(p.total_pedido for p in peds if p.total_pedido)
-            txt_ventas.value  = f"S/ {ventas:,.2f}"
+            pendientes = [
+                p for p in peds_filtrados
+            if p.estado_logistico in ("recibido", "en camino", "en ruta")
+            ]
+            entregados = [
+                p for p in peds_filtrados
+                if p.estado_logistico == "entregado"
+            ]
+            ventas = sum(p.total_pedido for p in peds_filtrados if p.total_pedido)
+
+            txt_alertas.value   = str(len(criticos))
+            txt_pedidos.value   = str(len(peds_filtrados))
+            txt_ventas.value    = f"S/ {ventas:,.2f}"
+            txt_pendientes.value = str(len(pendientes))
+            txt_entregados.value = str(len(entregados))
 
             # Construir pedidos con filtro activo
             await construir_lista_pedidos(
@@ -203,49 +223,55 @@ async def main(page: ft.Page):
         except Exception as ex:
             print(f"[UI ERROR] {ex}")
 
+    async def cerrar_sesion(e=None):
+        try:
+            from auth import logout
+            logout()
+        except Exception:
+            pass
+        mostrar_login = page.session.get("mostrar_login")
+        if mostrar_login:
+            await mostrar_login()
+
     # ── Layout ────────────────────────────────────────────────
-    await page.add_async(
-        # Header
+    page.controls.extend([
         ft.Row(controls=[
             ft.Column([
                 ft.Text("Smart-Liquor Dashboard", size=28, weight="bold"),
                 ft.Text("Logistica Chincha  •  Supabase Cloud", color="grey"),
             ]),
-            ft.IconButton("refresh", on_click=refrescar_datos, tooltip="Actualizar"),
+            ft.Row([
+                ft.IconButton("refresh", on_click=refrescar_datos, tooltip="Actualizar"),
+                ft.IconButton(
+                    "logout", icon_color="red",
+                    tooltip="Cerrar sesion",
+                    on_click=lambda e: asyncio.ensure_future(cerrar_sesion(e)),
+                ),
+            ]),
         ], alignment="spaceBetween"),
 
         ft.Divider(height=20, color="#232629"),
-
-        # Metricas
         row_metricas,
-
         ft.Divider(height=20, color="#232629"),
 
-        # Contenido principal
         ft.Row(controls=[
-            # Columna pedidos
             ft.Column([
                 ft.Text("Pedidos Recientes", size=18, weight="bold"),
-                row_filtro,
+                col_filtro,
                 txt_error_fecha,
-                ft.Container(content=lista_pedidos_ui, height=400),
+            
+            ft.Container(content=lista_pedidos_ui, height=400),
             ], expand=2),
-
-            # Columna inventario
             ft.Column([
                 ft.Row([
                     ft.Text("Inventario", size=18, weight="bold", expand=True),
-                    ft.ElevatedButton(
-                        "+ Nuevo",
-                        bgcolor="green",
-                        color="white",
-                        height=32,
-                        on_click=lambda e: asyncio.ensure_future(abrir_crear()),
-                    ),
+                    ft.ElevatedButton("+ Nuevo", bgcolor="green", color="white",
+                                  height=32,
+                                  on_click=lambda e: asyncio.ensure_future(abrir_crear())),
                 ], vertical_alignment="center"),
                 ft.Container(content=lista_inventario_ui, height=450),
             ], expand=1),
         ], vertical_alignment="start", spacing=30),
-    )
-
+    ])
+    await page.update_async()
     await refrescar_datos()
