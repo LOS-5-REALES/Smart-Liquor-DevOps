@@ -20,8 +20,6 @@ from componentes import (
     build_fila_inventario,
 )
 
-import os
-
 async def run_db(fn):
     def _execute():
         with Session(engine) as db:
@@ -48,14 +46,14 @@ async def main(page: ft.Page):
         page=page,
         run_db=run_db,
         crud=crud,
-        refrescar_datos=lambda: refrescar_datos(),
+        refrescar_datos=lambda e=None: asyncio.create_task(refrescar_datos()),
     )
 
     modal_crear, modal_eliminar, abrir_crear, abrir_eliminar = build_modal_producto(
         page=page,
         run_db=run_db,
         crud=crud,
-        refrescar_datos=lambda: refrescar_datos(),
+        refrescar_datos=lambda e=None: asyncio.create_task(refrescar_datos()),
     )
 
     modal_editar, cargar_modal_editar = build_modal_editar(
@@ -63,7 +61,7 @@ async def main(page: ft.Page):
         run_db=run_db,
         crud=crud,
         models=models,
-        refrescar_datos=lambda: refrescar_datos(),
+        refrescar_datos=lambda e=None: asyncio.create_task(refrescar_datos()),
     )
 
     page.overlay.extend([modal_suministro, modal_crear, modal_eliminar, modal_editar])
@@ -136,7 +134,6 @@ async def main(page: ft.Page):
                 if inp_fecha_inicio.value else "General"
             )
             nombre_archivo = generar_pdf_pedidos(pedidos_para_pdf, rango)
-            import os
             BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
             await page.launch_url_async(f"{BASE_URL}/static/{nombre_archivo}")
             txt_error_fecha.value = "Reporte generado."
@@ -175,7 +172,7 @@ async def main(page: ft.Page):
 
             # Actualizar metricas
             peds_filtrados = filtrar_pedidos_por_fecha(
-            peds, inp_fecha_inicio.value, inp_fecha_fin.value
+                peds, inp_fecha_inicio.value, inp_fecha_fin.value
             )
 
             criticos = [
@@ -184,7 +181,7 @@ async def main(page: ft.Page):
             ]
             pendientes = [
                 p for p in peds_filtrados
-            if p.estado_logistico in ("recibido", "en camino", "en ruta")
+                if p.estado_logistico in ("recibido", "en camino", "en ruta")
             ]
             entregados = [
                 p for p in peds_filtrados
@@ -199,13 +196,7 @@ async def main(page: ft.Page):
             txt_entregados.value = str(len(entregados))
 
             # Construir pedidos con filtro activo
-            await construir_lista_pedidos(
-                filtrar_pedidos_por_fecha(
-                    peds,
-                    inp_fecha_inicio.value,
-                    inp_fecha_fin.value,
-                )
-            )
+            await construir_lista_pedidos(peds_filtrados)
 
             # Construir inventario
             lista_inventario_ui.controls.clear()
@@ -222,6 +213,28 @@ async def main(page: ft.Page):
 
         except Exception as ex:
             print(f"[UI ERROR] {ex}")
+
+    async def buscar_en_inventario(e):
+        """Filtra la lista de inventario según el término de búsqueda."""
+        termino = e.control.value.lower()
+        
+        # Re-obtener todos los productos para asegurar data fresca
+        prods = await run_db(lambda db: db.query(models.Producto).all())
+        
+        if not termino:
+            prods_filtrados = prods
+        else:
+            prods_filtrados = [
+                p for p in prods if termino in p.nombre.lower()
+            ]
+        
+        # Limpiar y reconstruir la UI del inventario
+        lista_inventario_ui.controls.clear()
+        for pr in prods_filtrados:
+            lista_inventario_ui.controls.append(
+                build_fila_inventario(pr, abrir_suministro, abrir_eliminar)
+            )
+        await page.update_async()
 
     async def cerrar_sesion(e=None):
         try:
@@ -245,7 +258,7 @@ async def main(page: ft.Page):
                 ft.IconButton(
                     "logout", icon_color="red",
                     tooltip="Cerrar sesion",
-                    on_click=lambda e: asyncio.ensure_future(cerrar_sesion(e)),
+                    on_click=lambda e: asyncio.create_task(cerrar_sesion(e)),
                 ),
             ]),
         ], alignment="spaceBetween"),
@@ -259,16 +272,26 @@ async def main(page: ft.Page):
                 ft.Text("Pedidos Recientes", size=18, weight="bold"),
                 col_filtro,
                 txt_error_fecha,
-            
-            ft.Container(content=lista_pedidos_ui, height=400),
+                ft.Container(content=lista_pedidos_ui, height=400),
             ], expand=2),
             ft.Column([
                 ft.Row([
                     ft.Text("Inventario", size=18, weight="bold", expand=True),
-                    ft.ElevatedButton("+ Nuevo", bgcolor="green", color="white",
-                                  height=32,
-                                  on_click=lambda e: asyncio.ensure_future(abrir_crear())),
+                    ft.ElevatedButton(
+                        "+ Nuevo", bgcolor="green", color="white",
+                        height=32,
+                        on_click=lambda e: asyncio.create_task(abrir_crear())
+                    ),
                 ], vertical_alignment="center"),
+                ft.TextField(
+                    hint_text="Buscar producto...",
+                    on_change=buscar_en_inventario,
+                    border_radius=20,
+                    height=40,
+                    text_size=14,
+                    content_padding=10,
+                    prefix_icon=ft.icons.SEARCH,
+                ),
                 ft.Container(content=lista_inventario_ui, height=450),
             ], expand=1),
         ], vertical_alignment="start", spacing=30),
