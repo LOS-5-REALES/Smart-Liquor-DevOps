@@ -4,25 +4,22 @@ from datetime import datetime, timedelta
 
 
 def build_filtro_fecha(on_filtrar, on_pdf, on_limpiar):
-    """
-    Barra de filtro con botones rapidos y campos opcionales.
-    Retorna (inp_fecha_inicio, inp_fecha_fin, txt_error, col_filtro)
-    """
     inp_fecha_inicio = ft.TextField(
-        label="Desde (DD/MM/AAAA)", width=145, value=""
+        label="Desde (DD/MM/AAAA)", width=140, value=""
     )
     inp_fecha_fin = ft.TextField(
-        label="Hasta (DD/MM/AAAA)", width=145, value=""
+        label="Hasta (DD/MM/AAAA)", width=140, value=""
     )
     txt_error = ft.Text("", color="red", size=11)
+
     row_personalizado = ft.Row(
         [inp_fecha_inicio, inp_fecha_fin,
          ft.ElevatedButton("Aplicar", bgcolor="#1565c0", color="white",
                            height=36, on_click=on_filtrar)],
-        spacing=8, visible=False
+        spacing=6, visible=False, wrap=True,
     )
 
-    def set_fecha(inicio: str, fin: str):
+    def set_fecha(inicio, fin):
         inp_fecha_inicio.value = inicio
         inp_fecha_fin.value    = fin
 
@@ -34,7 +31,7 @@ def build_filtro_fecha(on_filtrar, on_pdf, on_limpiar):
         await e.page.update_async()
 
     async def btn_semana(e):
-        hoy   = datetime.now()
+        hoy    = datetime.now()
         inicio = (hoy - timedelta(days=7)).strftime("%d/%m/%Y")
         fin    = hoy.strftime("%d/%m/%Y")
         set_fecha(inicio, fin)
@@ -43,7 +40,7 @@ def build_filtro_fecha(on_filtrar, on_pdf, on_limpiar):
         await e.page.update_async()
 
     async def btn_mes(e):
-        hoy   = datetime.now()
+        hoy    = datetime.now()
         inicio = hoy.replace(day=1).strftime("%d/%m/%Y")
         fin    = hoy.strftime("%d/%m/%Y")
         set_fecha(inicio, fin)
@@ -61,27 +58,29 @@ def build_filtro_fecha(on_filtrar, on_pdf, on_limpiar):
         await on_limpiar(e)
         await e.page.update_async()
 
-    # Estilo compartido de botones
     def quick_btn(texto, handler, color="#2a2d30"):
         return ft.ElevatedButton(
-            texto, height=36, bgcolor=color,
-            color="white", on_click=handler,
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=6))
+            texto, height=34, bgcolor=color, color="white",
+            on_click=handler,
+            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=6)),
         )
 
     col_filtro = ft.Column([
         ft.Row([
             quick_btn("Hoy",           btn_hoy,           "#1E5631"),
-            quick_btn("Esta semana",   btn_semana,        "#1565c0"),
-            quick_btn("Este mes",      btn_mes,           "#4A235A"),
+            quick_btn("Semana",        btn_semana,        "#1565c0"),
+            quick_btn("Mes",           btn_mes,           "#4A235A"),
             quick_btn("Personalizado", btn_personalizado, "#7D3C00"),
+        ], spacing=6, wrap=True),
+        ft.Row([
             ft.ElevatedButton(
                 "PDF", icon="picture_as_pdf",
                 bgcolor="#c62828", color="white",
-                height=36, on_click=on_pdf,
+                height=34, on_click=on_pdf,
+                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=6)),
             ),
             ft.TextButton("Limpiar", on_click=btn_limpiar),
-        ], spacing=8),
+        ], spacing=6),
         row_personalizado,
         txt_error,
     ], spacing=6)

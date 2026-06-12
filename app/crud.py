@@ -315,3 +315,21 @@ def eliminar_item_pedido(db: Session, detalle_id: int):
 
     recalcular_total_pedido(db, pedido_id)
     return pedido_id
+
+def buscar_clientes(db: Session, query: str = ""):
+    """
+    Busca clientes por nombre o telefono con sus pedidos cargados.
+    Si query esta vacio retorna todos los clientes.
+    """
+    q = (
+        db.query(models.Cliente)
+        .options(joinedload(models.Cliente.pedidos))
+        .order_by(models.Cliente.id.desc())
+    )
+    if query.strip():
+        termino = f"%{query.strip()}%"
+        q = q.filter(
+            models.Cliente.nombre_completo.ilike(termino) |
+            models.Cliente.telefono.ilike(termino)
+        )
+    return q.all()
