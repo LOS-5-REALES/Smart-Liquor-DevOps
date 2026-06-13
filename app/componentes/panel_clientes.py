@@ -5,23 +5,29 @@ import flet as ft
 
 def build_panel_clientes(page: ft.Page, run_db, models, crud):
     """
-    Panel de busqueda y listado de clientes con autocompletado.
-    Retorna (panel, refrescar_clientes) para integrarlo en ui.py.
+    Panel premium de búsqueda y gestión de clientes a pantalla completa.
+    Retorna (panel, refrescar_clientes) perfectamente acoplados con ui.py.
     """
-    lista_clientes_ui = ft.Column(spacing=8, scroll="always")
-    txt_total_clientes = ft.Text("0 clientes", size=12, color="grey")
+    lista_clientes_ui = ft.Column(spacing=10, scroll=ft.ScrollMode.ADAPTIVE, expand=True)
+    txt_total_clientes = ft.Container(
+        content=ft.Text("0 registrados", size=11, color="#2196f3", weight="bold"),
+        bgcolor="#1a1f26",
+        padding=ft.padding.symmetric(horizontal=10, vertical=4),
+        border_radius=6
+    )
     _todos_los_clientes = []
 
-    # ── Buscador con autocompletado ───────────────────────────
+    # ── Buscador Corporativo de Alta Densidad (CORREGIDO) ─────
     inp_busqueda = ft.TextField(
-        hint_text="Buscar cliente por nombre o telefono...",
-        border_radius=20,
-        height=42,
+        hint_text="Buscar cliente por nombre, apellidos o número telefónico...",
+        border_radius=12,
+        height=46,
         text_size=14,
-        content_padding=10,
-        prefix_icon=ft.icons.SEARCH,
-        bgcolor="#16191c",
-        border_color="#2a2d30",
+        content_padding=12,
+        prefix_icon=ft.icons.SEARCH,  # Compatible globalmente
+        bgcolor="#111416",
+        border_color="#232629",
+        focused_border_color="#2196f3",
     )
 
     def filtrar_clientes(termino: str):
@@ -41,16 +47,16 @@ def build_panel_clientes(page: ft.Page, run_db, models, crud):
 
     inp_busqueda.on_change = on_busqueda
 
-    # ── Construir lista de clientes ───────────────────────────
+    # ── Construcción de Fichas de Clientes (Widescreen) ────────
     async def construir_lista(clientes):
         lista_clientes_ui.controls.clear()
-        txt_total_clientes.value = f"{len(clientes)} cliente{'s' if len(clientes) != 1 else ''}"
+        txt_total_clientes.content.value = f"{len(clientes)} cliente{'s' if len(clientes) != 1 else ''}"
 
         if not clientes:
             lista_clientes_ui.controls.append(
                 ft.Container(
                     content=ft.Text(
-                        "No se encontraron clientes.",
+                        "No se encontraron clientes registrados en la base de datos.",
                         color="grey", italic=True, size=13
                     ),
                     padding=20,
@@ -59,84 +65,104 @@ def build_panel_clientes(page: ft.Page, run_db, models, crud):
             return
 
         for c in clientes:
-            # Contar pedidos del cliente
-            total_pedidos  = len(c.pedidos) if c.pedidos else 0
-            total_gastado  = sum(
+            # Cálculos de valor transaccional (Métricas del cliente)
+            total_pedidos = len(c.pedidos) if c.pedidos else 0
+            total_gastado = sum(
                 p.total_pedido for p in c.pedidos if p.total_pedido
             ) if c.pedidos else 0.0
 
-            # Fuente del cliente
+            # Lógica de canales e identificación visual
             es_whatsapp = (c.telefono or "").startswith("whatsapp:")
             tel_limpio  = (c.telefono or "").replace("whatsapp:", "")
-            fuente_icon = "chat" if es_whatsapp else "person"
-            fuente_color = "#25D366" if es_whatsapp else "#1565c0"
-            fuente_label = "WhatsApp" if es_whatsapp else "Manual"
+            
+            fuente_icon = ft.icons.PHONELINK_RING if es_whatsapp else ft.icons.ASSIGNMENT_IND
+            fuente_color = "#25D366" if es_whatsapp else "#2196f3"
+            fuente_label = "WHATSAPP" if es_whatsapp else "MANUAL"
 
             lista_clientes_ui.controls.append(
                 ft.Container(
-                    content=ft.Column([
-                        ft.Row([
-                            ft.Icon(fuente_icon, color=fuente_color, size=18),
-                            ft.Column([
-                                ft.Text(
-                                    c.nombre_completo or "Sin nombre",
-                                    weight="bold", size=14,
-                                ),
-                                ft.Text(
-                                    tel_limpio,
-                                    color="grey", size=12,
-                                ),
-                            ], expand=True, spacing=2),
-                            ft.Container(
-                                content=ft.Text(fuente_label, size=10, color="white"),
-                                bgcolor=fuente_color,
-                                border_radius=4,
-                                padding=ft.padding.symmetric(horizontal=6, vertical=2),
-                            ),
-                        ], vertical_alignment="center", spacing=10),
-
-                        ft.Divider(height=6, color="#2a2d30"),
-
-                        ft.Row([
-                            ft.Column([
-                                ft.Text("DIRECCION", size=9, color="#555"),
-                                ft.Text(
-                                    c.direccion_exacta or "No registrada",
-                                    size=12,
-                                    color="white" if c.direccion_exacta else "grey",
-                                    italic=not c.direccion_exacta,
-                                ),
-                            ], expand=True, spacing=2),
-                            ft.Column([
-                                ft.Text("PEDIDOS", size=9, color="#555"),
-                                ft.Text(
-                                    str(total_pedidos),
-                                    size=14, weight="bold", color="amber",
-                                ),
-                            ], spacing=2),
-                            ft.Column([
-                                ft.Text("TOTAL GASTADO", size=9, color="#555"),
-                                ft.Text(
-                                    f"S/ {total_gastado:.2f}",
-                                    size=13, color="green",
-                                ),
-                            ], spacing=2),
-                        ], spacing=16),
-
-                        # Referencia si existe
-                        ft.Text(
-                            f"📍 Ref: {c.referencia_ubicacion}",
-                            size=11, color="#555",
-                            visible=bool(c.referencia_ubicacion),
+                    content=ft.Row([
+                        # 1. Avatar Dinámico / Canal de Ingreso
+                        ft.Container(
+                            content=ft.Icon(fuente_icon, color=fuente_color, size=20),
+                            bgcolor=f"{fuente_color}10",
+                            padding=12,
+                            border_radius=50, # Completamente circular
+                            alignment=ft.alignment.center
                         ),
-                    ], spacing=6),
-                    bgcolor="#16191c",
-                    border_radius=10,
-                    padding=ft.padding.symmetric(horizontal=14, vertical=10),
+
+                        # 2. Información del Perfil (Nombre y Teléfono)
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Text(
+                                    c.nombre_completo or "Cliente Sin Nombre",
+                                    weight="bold", size=15, color="white",
+                                    overflow=ft.TextOverflow.ELLIPSIS
+                                ),
+                                ft.Row([
+                                    ft.Text(f"📞 {tel_limpio}", color="grey", size=12),
+                                    ft.Container(
+                                        content=ft.Text(fuente_label, size=9, color=fuente_color, weight="bold"),
+                                        bgcolor=f"{fuente_color}15",
+                                        padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                                        border_radius=4,
+                                        border=ft.border.all(1, fuente_color)
+                                    )
+                                ], spacing=8)
+                            ], spacing=4, alignment="center"),
+                            expand=3,
+                        ),
+
+                        # 3. Datos de Despacho Localizado (Chincha)
+                        ft.Container(
+                            content=ft.Column([
+                                ft.Text("DIRECCIÓN DE ENTREGA", size=10, color="grey", weight="bold"),
+                                ft.Text(
+                                    c.direccion_exacta or "Dirección no especificada",
+                                    size=13, color="white" if c.direccion_exacta else "grey",
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                    italic=not c.direccion_exacta
+                                ),
+                                ft.Text(
+                                    f"📍 Ref: {c.referencia_ubicacion}",
+                                    size=11, color="#ffb74d",
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                    visible=bool(c.referencia_ubicacion)
+                                )
+                            ], spacing=2, alignment="center"),
+                            expand=4,
+                        ),
+
+                        # 4. Historial y Volumen de Compra Financiera
+                        ft.Container(
+                            content=ft.Row([
+                                # Columna interna: Conteo de órdenes
+                                ft.Column([
+                                    ft.Text("ÓRDENES", size=10, color="grey", weight="bold"),
+                                    ft.Text(f"{total_pedidos} peds", size=13, color="#ffc107", weight="bold")
+                                ], spacing=2, alignment="center"),
+                                ft.VerticalDivider(width=20, color="#1a1d20"),
+                                # Columna interna: Valor de vida útil del cliente (LTV)
+                                ft.Column([
+                                    ft.Text("TOTAL GASTADO", size=10, color="grey", weight="bold"),
+                                    ft.Text(f"S/ {total_gastado:.2f}", size=14, color="#66bb6a", weight="bold")
+                                ], spacing=2, alignment="center")
+                            ], spacing=0, alignment="end"),
+                            expand=3,
+                            alignment=ft.alignment.center_right
+                        )
+
+                    ], alignment="spaceBetween", vertical_alignment="center"),
+                    
+                    # Estilo premium para la franja del cliente
+                    padding=ft.padding.symmetric(horizontal=16, vertical=12),
+                    bgcolor="#111416",
+                    border_radius=12,
+                    border=ft.border.all(1, "#1a1d20"),
                 )
             )
 
-    # ── Refresco de clientes ──────────────────────────────────
+    # ── Refresco de clientes sincronizado con SQLAlchemy ──────
     async def refrescar_clientes():
         nonlocal _todos_los_clientes
         try:
@@ -154,21 +180,30 @@ def build_panel_clientes(page: ft.Page, run_db, models, crud):
         except Exception as ex:
             print(f"[CLIENTES ERROR] {ex}")
 
-    # ── Panel completo ────────────────────────────────────────
+    # ── Armado del Layout Unificado ───────────────────────────
     panel = ft.Column([
         ft.Row([
-            ft.Text("Clientes", size=18, weight="bold", expand=True),
-            txt_total_clientes,
-            ft.IconButton(
-                "refresh",
-                icon_color="grey",
-                icon_size=18,
-                tooltip="Actualizar clientes",
-                on_click=lambda e: asyncio.ensure_future(refrescar_clientes()),
-            ),
-        ], vertical_alignment="center"),
-        inp_busqueda,
-        ft.Container(content=lista_clientes_ui, height=400),
-    ], spacing=8)
+            ft.Row([
+                ft.Icon(ft.icons.SUPERVISED_USER_CIRCLE, color="#2196f3", size=22),
+                ft.Text("Directorio de Clientes", size=18, weight="bold", color="white"),
+            ], spacing=10),
+            ft.Row([
+                txt_total_clientes,
+                ft.IconButton(
+                    ft.icons.REFRESH,
+                    icon_color="white",
+                    bgcolor="#111416",
+                    icon_size=16,
+                    tooltip="Actualizar base de datos",
+                    on_click=lambda e: asyncio.ensure_future(refrescar_clientes()),
+                ),
+            ], spacing=8),
+        ], alignment="spaceBetween", vertical_alignment="center"),
+        
+        # CORREGIDO: padding.vertical cambiado por padding.only para soporte legacy
+        ft.Container(content=inp_busqueda, padding=ft.padding.only(top=5, bottom=5)),
+        
+        ft.Container(content=lista_clientes_ui, expand=True),
+    ], spacing=10, expand=True)
 
     return panel, refrescar_clientes

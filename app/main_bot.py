@@ -4,7 +4,7 @@ Punto de entrada del microservicio del Bot de WhatsApp.
 
 Expone los endpoints necesarios para integrarse con la API de Twilio,
 recibiendo mensajes entrantes vía Webhooks y despachando las respuestas
-generadas por el motor lógico del bot.
+generadas por el motor lógico del bot de forma multiusuario.
 """
 
 import uvicorn
@@ -43,25 +43,28 @@ def health_check():
 )
 async def whatsapp_webhook(
         Body: str = Form(..., title="Mensaje", description="El texto que el cliente escribió en WhatsApp"),
-        From: str = Form("", title="Número Remitente", description="Número de teléfono del cliente (ej. +51999999999)")
+        From: str = Form("", title="Número Remitente", description="Número de teléfono del cliente (ej. whatsapp:+51999999999)")
 ):
     """
     Este endpoint es consumido exclusivamente por los servidores de **Twilio**.
 
-    1. Recibe el mensaje entrante del usuario.
-    2. Lo pasa por el motor de procesamiento (`procesar_mensaje`).
+    1. Recibe el mensaje entrante del usuario y su número telefónico.
+    2. Lo pasa al motor lógico indexando el estado por su número ('From').
     3. Devuelve las instrucciones de respuesta en formato XML.
 
     Args:
         Body (str): El contenido de texto del mensaje de WhatsApp extraído del formulario.
-        From (str): Identificador del remitente proveído por Twilio.
+        From (str): Identificador único del remitente proveído por Twilio.
 
     Returns:
         Response: Respuesta HTTP con encabezado `application/xml` conteniendo
                   las instrucciones TwiML para Twilio.
     """
     print(f"[WHATSAPP] De: {From} | Mensaje: {Body}")
-    respuesta_xml = procesar_mensaje(Body)
+    
+    # 💥 MODIFICACIÓN CRÍTICA: Pasamos el 'From' real para habilitar el entorno multiusuario y el registro
+    respuesta_xml = procesar_mensaje(Body, telefono=From)
+    
     return Response(content=respuesta_xml, media_type="application/xml")
 
 

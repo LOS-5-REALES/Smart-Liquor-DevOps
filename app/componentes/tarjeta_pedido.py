@@ -7,145 +7,182 @@ from constants import ESTADOS_LOGISTICOS
 
 def build_tarjeta_pedido(p, cambiar_estado, cargar_modal_editar, page):
     """
-    Construye la tarjeta visual de un pedido con panel expandible.
+    Construye una tarjeta tipo ticket horizontal de alta densidad para la gestión de pedidos.
 
-    Parametros:
-        p                  -- objeto Pedido de SQLAlchemy
-        cambiar_estado     -- funcion async para cambiar estado logistico
-        cargar_modal_editar -- funcion async para abrir el modal de edicion
-        page               -- objeto Page de Flet
-
-    Retorna ft.Container con la tarjeta completa.
+    Parámetros:
+        p                   -- objeto Pedido de SQLAlchemy
+        cambiar_estado      -- función async para cambiar estado logístico
+        cargar_modal_editar -- función async para abrir el modal de edición
+        page                -- objeto Page de Flet
     """
-    nombre_cliente = p.cliente.nombre_completo if p.cliente else "Anonimo"
+    nombre_cliente = p.cliente.nombre_completo if p.cliente else "Anónimo"
+    telefono_cli   = p.cliente.telefono if p.cliente and p.cliente.telefono else "Sin telf."
     total          = p.total_pedido or 0.0
     estado_actual  = p.estado_logistico or "recibido"
+    
     datos_estado   = ESTADOS_LOGISTICOS.get(estado_actual, {"color": "grey", "label": "Desconocido"})
     color_estado   = datos_estado["color"]
 
-    # ── Fecha formateada ──────────────────────────────────────
+    # ── Formateo de fecha ejecutivo ──────────────────────────
     fecha_str = ""
     if p.fecha_hora:
         fh = (p.fecha_hora if isinstance(p.fecha_hora, datetime)
               else datetime.fromisoformat(str(p.fecha_hora)))
         fecha_str = fh.strftime("%d/%m/%Y %H:%M")
 
-    # ── Filas de items ────────────────────────────────────────
+    # ── Filas de licores comprados ────────────────────────────
     filas_items = []
     if p.items:
         for item in p.items:
-            nombre_prod = item.producto.nombre if item.producto else "Eliminado"
+            nombre_prod = item.producto.nombre if item.producto else "Producto Eliminado"
             precio_unit = (item.producto.precio_venta or 0) if item.producto else 0
             subtotal    = precio_unit * (item.cantidad or 0)
             filas_items.append(
                 ft.Row(controls=[
-                    ft.Icon("circle", size=7, color="amber"),
-                    ft.Text(nombre_prod, expand=True, size=13),
-                    ft.Text(
-                        f"x{item.cantidad}", width=40, size=13,
-                        color="grey", text_align="right"
-                    ),
-                    ft.Text(
-                        f"S/ {subtotal:.2f}", width=75, size=13,
-                        color="amber", text_align="right"
-                    ),
-                ], spacing=8, vertical_alignment="center")
+                    ft.Icon(ft.icons.LOCAL_BAR, size=12, color="#2196f3"),
+                    ft.Text(nombre_prod, expand=True, size=13, color="white"),
+                    ft.Text(f"x{item.cantidad}", width=50, size=13, color="grey", text_align="right"),
+                    ft.Text(f"S/ {subtotal:.2f}", width=90, size=13, color="#ffc107", text_align="right", weight="bold"),
+                ], spacing=10, vertical_alignment="center")
             )
     else:
         filas_items.append(
-            ft.Text("Sin items registrados", color="grey", size=12, italic=True)
+            ft.Text("Sin licores o ítems registrados en la orden", color="grey", size=12, italic=True)
         )
 
-    # ── Panel colapsable ──────────────────────────────────────
+    # ── Desplegable colapsable interno ────────────────────────
     panel_detalle = ft.Container(
         visible=False,
         content=ft.Column(controls=[
-            ft.Divider(height=10, color="#2a2d30"),
+            ft.Divider(height=16, color="#1a1d20"),
             ft.Row(controls=[
-                ft.Text("PRODUCTO", size=11, color="#555", expand=True),
-                ft.Text("CANT.",    size=11, color="#555", width=40, text_align="right"),
-                ft.Text("SUBTOTAL", size=11, color="#555", width=75, text_align="right"),
-            ], spacing=8),
-            *filas_items,
-        ], spacing=6),
-        padding=ft.padding.only(left=4, right=4, top=0, bottom=6),
+                ft.Text("DESCRIPCIÓN DEL LICOR", size=11, color="grey", expand=True, weight="bold"),
+                ft.Text("CANT.",    size=11, color="grey", width=50, text_align="right", weight="bold"),
+                ft.Text("SUBTOTAL", size=11, color="grey", width=90, text_align="right", weight="bold"),
+            ], spacing=10),
+            ft.Column(controls=filas_items, spacing=6)
+        ], spacing=4),
+        padding=ft.padding.only(left=44, right=10, bottom=6),
     )
 
-    # ── Boton expandir ────────────────────────────────────────
     btn_expand = ft.IconButton(
-        icon="keyboard_arrow_down",
-        icon_color="white",
-        icon_size=22,
-        tooltip="Ver detalle del pedido",
+        icon=ft.icons.KEYBOARD_ARROW_DOWN,
+        icon_color="grey",
+        icon_size=20,
+        tooltip="Ver desglose de botellas",
     )
 
-    async def toggle(e, _panel=panel_detalle, _btn=btn_expand):
-        _panel.visible  = not _panel.visible
-        _btn.icon       = "keyboard_arrow_up" if _panel.visible else "keyboard_arrow_down"
-        _btn.icon_color = "amber"             if _panel.visible else "white"
+    async def toggle(e):
+        panel_detalle.visible = not panel_detalle.visible
+        btn_expand.icon = ft.icons.KEYBOARD_ARROW_UP if panel_detalle.visible else ft.icons.KEYBOARD_ARROW_DOWN
+        btn_expand.icon_color = "#2196f3" if panel_detalle.visible else "grey"
         await page.update_async()
 
     btn_expand.on_click = toggle
 
-    # ── Dropdown de estado ────────────────────────────────────
-    opciones_dropdown = [
-        ft.dropdown.Option(key=clave, text=datos["label"])
-        for clave, datos in ESTADOS_LOGISTICOS.items()
-    ]
-
-    dropdown_estado = ft.Dropdown(
-        value=estado_actual,
-        width=140,
-        content_padding=ft.padding.symmetric(horizontal=10, vertical=4),
-        options=opciones_dropdown,
-        border_color=color_estado,
-        color="white",
-        bgcolor="#0b0d0f",
+    # ── BADGE DE ESTADO CON ACCIÓN POPUP ──
+    container_badge = ft.Container(
+        content=ft.Text(
+            datos_estado["label"].upper(),
+            size=11, weight="bold", color=color_estado
+        ),
+        bgcolor=f"{color_estado}15",
+        border=ft.border.all(1, color_estado),
+        border_radius=6,
+        padding=ft.padding.symmetric(horizontal=10, vertical=6),
     )
 
-    async def _on_estado_change(e, pid: int, _dd=dropdown_estado):
-        nuevo       = e.control.value
-        nuevo_color = ESTADOS_LOGISTICOS.get(nuevo, {"color": "grey"})["color"]
-        _dd.border_color = nuevo_color
+    async def _cambiar_estado_popup(e, clave_nuevo_estado):
+        datos_nuevo = ESTADOS_LOGISTICOS.get(clave_nuevo_estado, {"color": "grey", "label": "Desconocido"})
+        container_badge.content.value = datos_nuevo["label"].upper()
+        container_badge.content.color = datos_nuevo["color"]
+        container_badge.bgcolor = f"{datos_nuevo['color']}15"
+        container_badge.border = ft.border.all(1, datos_nuevo["color"])
         await page.update_async()
-        await cambiar_estado(pid, nuevo)
+        await cambiar_estado(p.id, clave_nuevo_estado)
 
-    dropdown_estado.on_change = lambda e, pid=p.id, _dd=dropdown_estado: (
-        asyncio.ensure_future(_on_estado_change(e, pid, _dd))
+    # 🛠️ CORRECCIÓN AQUÍ: Se cambió 'key' por 'data' para evitar el error de inicialización
+    menu_estados = ft.PopupMenuButton(
+        content=container_badge,
+        items=[
+            ft.PopupMenuItem(
+                text=datos["label"],
+                data=clave,
+                on_click=lambda e: asyncio.ensure_future(_cambiar_estado_popup(e, e.control.data))
+            ) for clave, datos in ESTADOS_LOGISTICOS.items()
+        ],
+        tooltip="Cambiar estado logístico"
     )
 
-    # ── Tarjeta completa ──────────────────────────────────────
+    # ── RENDERIZADO ESTRUCTURAL HORIZONTAL (WIDESCREEN) ───────
     return ft.Container(
         content=ft.Column(controls=[
             ft.Row(controls=[
-                ft.Icon("shopping_cart", color="orange", size=20),
-                ft.Column(controls=[
-                    ft.Row([
-                        ft.Text(
-                            f"Pedido #{p.id}  —  {nombre_cliente}",
-                            weight="bold", size=14
-                        ),
-                        ft.Text(fecha_str, color="#555", size=11),
-                    ], spacing=10),
-                    ft.Row(controls=[
-                        ft.Text(f"S/ {total:.2f}", color="amber", size=13),
-                        dropdown_estado,
-                    ], spacing=10, vertical_alignment="center"),
-                ], expand=True, spacing=4),
-                ft.IconButton(
-                    icon="edit_note",
-                    icon_color="#1565c0",
-                    icon_size=22,
-                    tooltip="Editar pedido",
-                    on_click=lambda e, pid=p.id: asyncio.ensure_future(
-                        cargar_modal_editar(pid)
+                # Columna 1: Identificador del Pedido e Icono
+                ft.Row([
+                    ft.Container(
+                        content=ft.Icon(ft.icons.LOCAL_SHIPPING, color="#2196f3", size=18),
+                        bgcolor="#1a1f26",
+                        padding=10,
+                        border_radius=8,
                     ),
+                    ft.Column([
+                        ft.Text(f"Pedido #{p.id:04d}", weight="bold", size=15, color="white"),
+                        ft.Text(fecha_str, color="grey", size=11),
+                    ], spacing=2)
+                ], spacing=12, expand=2),
+
+                # Columna 2: Datos de Contacto del Cliente
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text(nombre_cliente, weight="w600", size=14, color="white", overflow=ft.TextOverflow.ELLIPSIS),
+                        ft.Text(f"📞 {telefono_cli}", color="grey", size=11),
+                    ], spacing=2, alignment="center"),
+                    expand=3,
                 ),
-                btn_expand,
-            ], vertical_alignment="center", spacing=12),
+
+                # Columna 3: Gestor de Estado Logístico (Popup)
+                ft.Container(
+                    content=menu_estados,
+                    expand=2,
+                    alignment=ft.alignment.center_left
+                ),
+
+                # Columna 4: Total Financiero de la Orden
+                ft.Container(
+                    content=ft.Text(
+                        f"S/ {total:.2f}",
+                        color="#ffc107",
+                        weight="bold",
+                        size=16,
+                    ),
+                    expand=2,
+                    alignment=ft.alignment.center_right,
+                    padding=ft.padding.only(right=10)
+                ),
+
+                # Columna 5: Botones de Acción Rápida
+                ft.Row([
+                    ft.IconButton(
+                        icon=ft.icons.EDIT_NOTE,
+                        icon_color="#2196f3",
+                        icon_size=20,
+                        tooltip="Modificar detalles del pedido",
+                        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=6)),
+                        on_click=lambda e: asyncio.ensure_future(cargar_modal_editar(p.id)),
+                    ),
+                    btn_expand,
+                ], spacing=4, alignment="end")
+
+            ], vertical_alignment="center", spacing=10),
+            
+            # Sub-panel oculto que despliega la lista detallada de botellas
             panel_detalle,
         ], spacing=0),
-        bgcolor="#16191c",
-        border_radius=10,
-        padding=ft.padding.symmetric(horizontal=14, vertical=10),
+        
+        padding=ft.padding.symmetric(horizontal=16, vertical=12),
+        bgcolor="#111416",
+        border_radius=12,
+        border=ft.border.all(1, "#1a1d20"),
+        animate=ft.animation.Animation(150, "easeOut"),
     )
