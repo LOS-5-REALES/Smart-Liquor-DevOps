@@ -1,7 +1,7 @@
 """
-Módulo del Bot de WhatsApp con Registro de Clientes Completo.
-Gestiona el flujo de conversación automatizada con los clientes a través de Twilio.
-Mantiene el estado de la conversación en memoria por cada número telefónico.
+Módulo del Bot de WhatsApp con Registro Eficiente (Ahorro de Créditos).
+Pide todos los datos de delivery en un solo mensaje estructurado para mitigar
+gastos redundantes en la API de Twilio y evitar congelamientos en el flujo.
 """
 
 from twilio.twiml.messaging_response import MessagingResponse
@@ -10,12 +10,11 @@ from database import engine
 import models
 
 # ── Estado de conversación en memoria por número telefónico ─────────────────────────
-# { telefono: {"paso": "menu"|..., "productos": [...], "pedido_temporal": {...}} }
 sesiones = {}
 
 
 def obtener_catalogo() -> list:
-    """Recupera los productos disponibles excluyendo descontinuados."""
+    """Recupera los productos disponibles excluyendo los descontinuados."""
     with Session(engine) as db:
         return db.query(models.Producto).filter(
             ~models.Producto.nombre.startswith("[DESCONTINUADO]")
@@ -29,33 +28,41 @@ def verificar_registro_cliente(telefono: str) -> models.Cliente | None:
             models.Cliente.telefono == telefono
         ).first()
         
-        # Si no existe o le faltan datos críticos, consideramos que no está registrado
+        # Si no existe, no tiene dirección o mantiene el genérico, requiere registro
         if not cliente or not cliente.direccion_exacta or cliente.nombre_completo == "Cliente WhatsApp":
             return None
         return cliente
 
 
-def actualizar_o_crear_cliente(telefono: str, datos: dict) -> int:
-    """Crea o actualiza los datos del cliente en Supabase."""
-    with Session(engine) as db:
-        cliente = db.query(models.Cliente).filter(
-            models.Cliente.telefono == telefono
-        ).first()
+def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
+    """
+    Parsea el mensaje único del cliente y persiste los datos reales en Supabase.
+    Formato esperado: Nombre / Dirección / Referencia
+    """
+    # Intentamos separar prioritariamente por barras diagonales
+    partes = [p.strip() for p in texto_registro.split("/")]
+    
+    # Salvaguarda por si el cliente usó comas en lugar de barras
+    if len(partes) < 3:
+        partes = [p.strip() for p in texto_registro.split(",")]
         
+    # Si no se logran extraer los 3 datos mínimos obligatorios, falla la validación
+    if len(partes) < 3 or not partes[0] or not partes[1] or not partes[2]:
+        return False
+
+    nombre_comp, direccion, referencia = partes[0], partes[1], partes[2]
+
+    with Session(engine) as db:
+        cliente = db.query(models.Cliente).filter(models.Cliente.telefono == telefono).first()
         if not cliente:
             cliente = models.Cliente(telefono=telefono)
             db.add(cliente)
             
-        if "nombre" in datos:
-            cliente.nombre_completo = datos["nombre"]
-        if "direccion" in datos:
-            cliente.direccion_exacta = datos["direccion"]
-        if "referencia" in datos:
-            cliente.referencia_ubicacion = datos["referencia"]
-            
+        cliente.nombre_completo = nombre_comp
+        cliente.direccion_exacta = direccion
+        cliente.referencia_ubicacion = referencia
         db.commit()
-        db.refresh(cliente)
-        return cliente.id
+        return True
 
 
 def registrar_pedido(telefono: str, producto_id: int, cantidad: int) -> tuple[bool, float | str]:
@@ -63,7 +70,7 @@ def registrar_pedido(telefono: str, producto_id: int, cantidad: int) -> tuple[bo
     with Session(engine) as db:
         cliente = db.query(models.Cliente).filter(models.Cliente.telefono == telefono).first()
         if not cliente:
-            return False, "Cliente no registrado en el sistema."
+            return False, "Cliente no encontrado en el sistema."
 
         producto = db.query(models.Producto).filter(models.Producto.id == producto_id).first()
         if not producto:
@@ -72,7 +79,7 @@ def registrar_pedido(telefono: str, producto_id: int, cantidad: int) -> tuple[bo
         if (producto.stock_actual or 0) < cantidad:
             return False, f"Solo hay {producto.stock_actual} unidades disponibles."
 
-        # Descuento de stock y alerta de stock crítico
+        # Descuento de inventario y bandera de stock crítico
         producto.stock_actual -= cantidad
         if producto.stock_actual <= (producto.stock_minimo or 10):
             producto.alerta_roja = True
@@ -107,27 +114,27 @@ def menu_principal() -> str:
         "2️⃣ Hacer un pedido 🛒\n"
         "3️⃣ Info de delivery\n"
         "4️⃣ Métodos de pago\n\n"
-        "👉 Responde con el número."
+        "👉 Responde con el número de la opción."
     )
 
 
 def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
-    """Motor principal del flujo del chatbot indexado por número telefónico."""
+    """Motor principal del flujo automatizado indexado de forma multiusuario."""
     mensaje  = cuerpo_mensaje.strip()
     msg_bajo = mensaje.lower()
     response = MessagingResponse()
     msg      = response.message()
 
-    # Inicializar sesión única por número telefónico
+    # Inicializar estado aislado por número de teléfono
     if telefono not in sesiones:
-        sesiones[telefono] = {"paso": "menu", "datos_registro": {}}
+        sesiones[telefono] = {"paso": "menu"}
 
     sesion = sesiones[telefono]
     paso   = sesion.get("paso", "menu")
 
-    # Palabras clave globales de reinicio
+    # Comandos globales de escape o reinicio
     if msg_bajo in ["hola", "inicio", "menu", "menú", "cancelar"]:
-        sesiones[telefono] = {"paso": "menu", "datos_registro": {}}
+        sesiones[telefono] = {"paso": "menu"}
         msg.body(menu_principal())
         return str(response)
 
@@ -147,24 +154,27 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                         texto   += f"   💰 S/ {p.precio_venta:.2f}  {estado}\n\n"
                     texto += "Escribe *2* para iniciar tu pedido."
                     msg.body(texto)
-            except Exception as ex:
+            except Exception:
                 msg.body("😔 Error al cargar catálogo. Intenta más tarde.")
 
         elif mensaje == "2":
-            # VALIDACIÓN CRÍTICA: ¿El cliente ya tiene su perfil listo en Supabase?
+            # Verificación inmediata contra la base de datos de Supabase
             cliente = verificar_registro_cliente(telefono)
             
             if not cliente:
-                # Si no está registrado, lo enviamos al embudo de registro primero
-                sesion["paso"] = "registrando_nombre"
+                # Modificamos el paso a un único estado de captura masiva para ahorrar saldo de Twilio
+                sesion["paso"] = "esperando_registro_unico"
                 msg.body(
-                    "📝 *Registro de Cliente Nuevo*\n\n"
-                    "Para poder procesar tus pedidos y gestionar el delivery en Chincha, necesitamos registrar tus datos.\n\n"
-                    "👉 Por favor, escribe tu *Nombre y Apellido* completo:"
+                    "📝 *REGISTRO DE CLIENTE NUEVO* 🏡\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "Para poder procesar tus pedidos y gestionar el delivery en Chincha, necesitamos tus datos.\n\n"
+                    "👉 Por favor, envíanos tu información en un *SOLO MENSAJE* separado por barras diagonales *( / )* con el siguiente formato:\n\n"
+                    "*Nombre Completo / Dirección Exacta / Referencia*\n\n"
+                    "💡 *Ejemplo exacto a enviar:* \n"
+                    "_Jesús Loza Yataco / Av. Emancipación 345, Sunampe / Al costado de una antena_"
                 )
             else:
-                # Si ya está registrado, va directo al flujo de compra tradicional
-                ir_a_seleccion_productos(msg, sesion, telefono)
+                ir_a_seleccion_productos(msg, sesion)
 
         elif mensaje == "3":
             msg.body(
@@ -180,52 +190,27 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                 "💳 *MÉTODOS DE PAGO*\n\n"
                 "✅ Yape / Plin: *999 999 999*\n"
                 "✅ Efectivo contra entrega\n"
-                "✅ Tarjetas de Crédito/Débito en ruta\n\n"
+                "✅ Tarjetas en ruta\n\n"
                 "Escribe *INICIO* para regresar."
             )
         else:
             msg.body("🤔 No entendí la opción.\n\n" + menu_principal())
 
-    # ── FLUJO DE REGISTRO: PASO 1 (NOMBRE) ──────────────────────
-    elif paso == "registrando_nombre":
-        if len(mensaje) < 4:
-            msg.body("⚠️ Por favor ingresa un nombre válido y completo:")
+    # ── PASO: CAPTURA EFICIENTE DE DATOS (UN SOLO MENSAJE) ───
+    elif paso == "esperando_registro_unico":
+        exito = registrar_cliente_completo(telefono, mensaje)
+        if exito:
+            # Datos guardados perfectamente en Supabase, pasamos directo al catálogo
+            msg.body("✅ ¡Registro completado y guardado en la Base de Datos con éxito!")
+            ir_a_seleccion_productos(msg, sesion)
         else:
-            sesion["datos_registro"]["nombre"] = mensaje
-            sesion["paso"] = "registrando_direccion"
             msg.body(
-                f"¡Gracias, *{mensaje}*!\n\n"
-                "🏡 Ahora ingresa tu *Dirección Exacta* para el delivery\n"
-                "_(Ejemplo: Av. Victor Fajardo 345, Sunampe)_:"
+                "⚠️ *Formato de registro inválido.*\n\n"
+                "Por favor, vuelve a intentarlo asegurándote de usar las barras diagonales *( / )* para dividir los tres datos:\n\n"
+                "👉 _Nombre Completo / Dirección Exacta / Referencia_"
             )
 
-    # ── FLUJO DE REGISTRO: PASO 2 (DIRECCIÓN) ───────────────────
-    elif paso == "registrando_direccion":
-        if len(mensaje) < 6:
-            msg.body("⚠️ Proporciona una dirección más detallada para evitar confusiones:")
-        else:
-            sesion["datos_registro"]["direccion"] = mensaje
-            sesion["paso"] = "registrando_referencia"
-            msg.body(
-                "📍 Por último, una *Referencia de tu ubicación*\n"
-                "_(Ejemplo: Frente al colegio o a espaldas de la plaza)_:"
-            )
-
-    # ── FLUJO DE REGISTRO: PASO 3 (REFERENCIA Y GUARDADO) ───────
-    elif paso == "registrando_referencia":
-        if len(mensaje) < 4:
-            msg.body("⚠️ Por favor añade una referencia más clara:")
-        else:
-            sesion["datos_registro"]["referencia"] = mensaje
-            
-            # Guardamos los datos recolectados directamente en Supabase
-            actualizar_o_crear_cliente(telefono, sesion["datos_registro"])
-            
-            # Registro exitoso, pasamos de inmediato al catálogo de productos
-            msg.body("✅ ¡Registro completado con éxito en Smart-Liquor!\n\n Procedamos con tu compra.")
-            ir_a_seleccion_productos(msg, sesion, telefono)
-
-    # ── PASO: ELIGIENDO PRODUCTO ───────────────────────────────
+    # ── PASO: SELECCIÓN DE PRODUCTO ────────────────────────────
     elif paso == "eligiendo_producto":
         productos = sesion.get("productos", [])
         try:
@@ -242,21 +227,23 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     f"🍾 Seleccionaste: *{prod_nombre}*\n"
                     f"💰 Precio: S/ {prod_precio:.2f}\n\n"
                     "¿Cuántas unidades o cajas deseas?\n"
-                    "👉 Responde con un número (ej: 2):"
+                    "👉 Responde con un número entero (ej: 2):"
                 )
             else:
-                msg.body(f"⚠️ Número inválido. Elige entre 1 y {len(productos)}.")
+                msg.body(f"⚠️ Número inválido. Selecciona una opción entre 1 y {len(productos)}.")
         except ValueError:
-            msg.body(f"⚠️ Envía solo el número del licor. Elige entre 1 y {len(productos)}.")
+            msg.body(f"⚠️ Por favor, envía solo el número de la opción (1 al {len(productos)}).")
 
-    # ── PASO: ELIGIENDO CANTIDAD ───────────────────────────────
+    # ── PASO: SELECCIÓN DE CANTIDAD ────────────────────────────
     elif paso == "eligiendo_cantidad":
         try:
             cantidad = int(mensaje)
             if cantidad <= 0:
                 raise ValueError()
 
-            total = sesion["producto_price"] = sesion["producto_precio"] * cantidad
+            # ✨ SOLUCIÓN AL BUG: Corregido de 'producto_price' a 'producto_precio' para evitar excepciones
+            total = sesion["producto_precio"] * cantidad
+            
             sesion.update({
                 "paso": "confirmando",
                 "cantidad": cantidad,
@@ -267,20 +254,20 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                 f"🍾 {sesion['producto_nombre']}\n"
                 f"🔢 Cantidad: {cantidad}\n"
                 f"💰 Total a pagar: S/ {total:.2f}\n\n"
-                "¿Confirmas el envío?\n"
+                "¿Confirmas el envío de tu orden?\n"
                 "👉 Responde *SI* para confirmar\n"
                 "👉 Responde *NO* para cancelar"
             )
         except ValueError:
-            msg.body("⚠️ Por favor escribe un número entero válido (ej: 3):")
+            msg.body("⚠️ Entrada inválida. Por favor escribe un número entero válido (ej: 3):")
 
-    # ── PASO: CONFIRMANDO PEDIDO ───────────────────────────────
+    # ── PASO: CONFIRMACIÓN DEL PEDIDO ─────────────────────────
     elif paso == "confirmando":
         if msg_bajo in ["si", "sí", "yes", "confirmar", "ok"]:
             try:
                 ok, resultado = registrar_pedido(telefono, sesion["producto_id"], sesion["cantidad"])
-                # Limpiamos el estado volviendo al menú
-                sesiones[telefono] = {"paso": "menu", "datos_registro": {}}
+                # Liberar memoria de la sesión volviendo al estado inicial
+                sesiones[telefono] = {"paso": "menu"}
 
                 if ok:
                     msg.body(
@@ -290,34 +277,34 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                         "🚚 El repartidor se comunicará contigo al llegar. ¡Gracias por elegir Smart-Liquor!"
                     )
                 else:
-                    msg.body(f"⚠️ No pudimos procesarlo: {resultado}\n\nEscribe *INICIO* para reintentar.")
-            except Exception as ex:
-                sesiones[telefono] = {"paso": "menu", "datos_registro": {}}
-                msg.body("😔 Hubo un inconveniente al procesar el pedido. Por favor, reintenta.")
+                    msg.body(f"⚠️ No pudimos procesar tu solicitud: {resultado}\n\nEscribe *INICIO* para volver a empezar.")
+            except Exception:
+                sesiones[telefono] = {"paso": "menu"}
+                msg.body("😔 Hubo un inconveniente interno al procesar el pedido. Por favor, reintenta escribiendo *INICIO*.")
 
         elif msg_bajo in ["no", "cancelar"]:
-            sesiones[telefono] = {"paso": "menu", "datos_registro": {}}
+            sesiones[telefono] = {"paso": "menu"}
             msg.body("❌ Pedido cancelado.\n\n" + menu_principal())
         else:
-            msg.body("👉 Responde *SI* para confirmar tu orden o *NO* para anularla.")
+            msg.body("👉 Responde *SI* para confirmar tu orden o *NO* para anularla de forma definitiva.")
 
     return str(response)
 
 
-def ir_a_seleccion_productos(msg, sesion, telefono):
-    """Función auxiliar para listar productos y cambiar de estado."""
+def ir_a_seleccion_productos(msg, sesion):
+    """Función auxiliar centralizada para recuperar catálogo y renderizar opciones."""
     try:
         productos = obtener_catalogo()
         if not productos:
-            msg.body("😔 No hay licores disponibles en este instante.")
+            msg.body("😔 No hay licores disponibles en este instante. Intenta más tarde.")
         else:
             texto = "🛒 *¿Qué deseas pedir hoy?*\n\n"
             for i, p in enumerate(productos, 1):
                 texto += f"{i}. {p.nombre} — S/ {p.precio_venta:.2f}\n"
-            texto += "\n👉 Responde con el *número* del producto:"
+            texto += "\n👉 Responde con el *número* del licor que deseas:"
             
             sesion["paso"] = "eligiendo_producto"
             sesion["productos"] = [(p.id, p.nombre, p.precio_venta) for p in productos]
             msg.body(texto)
-    except Exception as ex:
-        msg.body("😔 Error al desplegar la lista de licores. Escribe *INICIO*.")
+    except Exception:
+        msg.body("😔 Error al desplegar la lista de licores. Escribe *INICIO* para reintentar.")
