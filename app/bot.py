@@ -1,14 +1,15 @@
 """
-Módulo del Bot de WhatsApp con Registro por Saltos de Línea (Enter).
-Optimizado para capturar datos en un solo mensaje estructurado por líneas,
-asegurando el commit en la base de datos y previniendo congelamientos.
+Módulo del Bot de WhatsApp con Registro Ultra Robusto basado en Etiquetas Key-Value.
+Optimizado para capturar datos en un solo mensaje identificando los campos de texto
+mediante expresiones regulares, asegurando el commit en la base de datos de Supabase.
 """
 
+import re
+import traceback
 from twilio.twiml.messaging_response import MessagingResponse
 from sqlalchemy.orm import Session
 from database import engine
 import models
-import traceback
 
 # Estado de conversación en memoria
 sesiones = {}
@@ -35,25 +36,36 @@ def verificar_registro_cliente(telefono: str) -> bool:
 
 def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
     """
-    Parsea el mensaje dividiendo el texto línea por línea (usando saltos de línea).
-    Elimina la necesidad de usar barras diagonales u otros símbolos molestos.
+    Parsea el mensaje buscando patrones como 'Nombre:', 'Dirección:' y 'Referencia:'.
+    Es totalmente inmune a si los datos vienen separados por espacios, saltos de línea o barras.
     """
     print(f"[LOG SERVER] Texto crudo recibido para procesar:\n{texto_registro}")
 
-    # Separamos el bloque de texto por cada salto de línea y limpiamos espacios vacíos
-    partes = [p.strip() for p in texto_registro.splitlines() if p.strip()]
-    
-    print(f"[LOG SERVER] Líneas útiles detectadas: {partes} | Cantidad: {len(partes)}")
-
-    # Validamos que el cliente haya ingresado al menos las 3 líneas obligatorias
-    if len(partes) < 3 or not partes[0] or not partes[1] or not partes[2]:
-        print(f"[REGISTRO FALLIDO] No se encontraron las 3 líneas requeridas en el mensaje.")
-        return False
-
-    # Asignamos el orden estricto de las líneas
-    nombre, direccion, referencia = partes[0], partes[1], partes[2]
-
     try:
+        # Buscamos los patrones clave ignorando mayúsculas/minúsculas. 
+        # Captura todo el contenido posterior a la etiqueta hasta encontrarse con otra etiqueta o el fin del texto.
+        match_nombre = re.search(r'(?:nombre|cliente)\s*:\s*(.*?)(?=(?:direcci[óo]n|referencia|$))', texto_registro, re.IGNORECASE | re.DOTALL)
+        match_direccion = re.search(r'(?:direcci[óo]n|dir)\s*:\s*(.*?)(?=(?:nombre|referencia|$))', texto_registro, re.IGNORECASE | re.DOTALL)
+        match_referencia = re.search(r'(?:referencia|ref)\s*:\s*(.*?)(?=(?:nombre|direcci[óo]n|$))', texto_registro, re.IGNORECASE | re.DOTALL)
+
+        # Si no se encuentra alguna de las tres palabras clave requeridas, rechazamos el registro
+        if not match_nombre or not match_direccion or not match_referencia:
+            print("[REGISTRO FALLIDO] No se detectaron las etiquetas requeridas (Nombre/Dirección/Referencia).")
+            return False
+
+        # Extraemos y limpiamos los textos de espacios innecesarios o caracteres extra residuales
+        nombre = match_nombre.group(1).strip().replace("\n", " ")
+        direccion = match_direccion.group(1).strip().replace("\n", " ")
+        referencia = match_referencia.group(1).strip().replace("\n", " ")
+
+        # Validamos que ninguna variable haya quedado vacía tras la limpieza
+        if not nombre or not direccion or not referencia:
+            print(f"[REGISTRO FALLIDO] Datos incompletos tras parsing -> Nombre: '{nombre}', Dir: '{direccion}', Ref: '{referencia}'")
+            return False
+
+        print(f"[LOG PARSED SUCCESS] Nombre: {nombre} | Dirección: {direccion} | Referencia: {referencia}")
+
+        # Guardado en Supabase utilizando la sesión SQLAlchemy
         with Session(engine) as db:
             cliente = db.query(models.Cliente).filter(models.Cliente.telefono == telefono).first()
             if not cliente:
@@ -64,11 +76,12 @@ def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
             cliente.direccion_exacta = direccion
             cliente.referencia_ubicacion = referencia
             
-            db.commit()  # Persistencia inmediata en la base de datos de Supabase
+            db.commit()  # Persistencia inmediata en la base de datos
             print(f"[REGISTRO EXITOSO] Cliente {telefono} guardado correctamente en Supabase.")
             return True
+
     except Exception as e:
-        print(f"[ERROR BD] Falló la inserción transaccional: {e}")
+        print(f"[ERROR EXCEPCIÓN BD] Falló la inserción transaccional: {e}")
         traceback.print_exc()
         return False
 
@@ -172,15 +185,14 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     "📝 *REGISTRO DE CLIENTE NUEVO* 🏡\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     "Para poder procesar tus pedidos y gestionar el delivery en Chincha, necesitamos tus datos.\n\n"
-                    "👉 Por favor, envíanos tu información en un *SOLO MENSAJE* escribiendo cada dato en una **línea diferente** (presionando la tecla Enter en tu teclado):\n\n"
-                    "✍️ *Formato requerido:*\n"
-                    "Línea 1: Nombre Completo\n"
-                    "Línea 2: Dirección Exacta\n"
-                    "Línea 3: Referencia de tu casa\n\n"
+                    "👉 Por favor, *COPIA, PEGA y LLENA* el siguiente formato en un *SOLO MENSAJE*:\n\n"
+                    "*Nombre:* Tu Nombre Completo\n"
+                    "*Dirección:* Tu Dirección Exacta\n"
+                    "*Referencia:* Una Referencia de tu casa\n\n"
                     "💡 *Ejemplo exacto a enviar:* \n"
-                    "Carlos Mendoza Ruiz\n"
-                    "Av. Benavides 412, Chincha Alta\n"
-                    "Frente al Grifo Primax"
+                    "Nombre: Jesús Loza Yataco\n"
+                    "Dirección: Av Emancipación 345, Sunampe\n"
+                    "Referencia: Al costado de una antena"
                 )
             else:
                 ir_a_seleccion_productos(msg, sesion)
@@ -194,11 +206,11 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             ir_a_seleccion_productos(msg, sesion)
         else:
             msg.body(
-                "⚠️ *No pudimos procesar el registro.*\n\n"
-                "Por favor, asegúrate de enviar tus 3 datos utilizando **líneas separadas** (presionando Enter):\n\n"
-                "1️⃣ Tu Nombre Completo\n"
-                "2️⃣ Tu Dirección Exacta\n"
-                "3️⃣ Una Referencia Cercana"
+                "⚠️ *No pudimos procesar tu registro.*\n\n"
+                "Asegúrate de copiar el formato incluyendo las palabras clave y los dos puntos (*:*):\n\n"
+                "👉 *Nombre:* Tu Nombre\n"
+                "👉 *Dirección:* Tu Dirección\n"
+                "👉 *Referencia:* Tu Referencia"
             )
 
     # ── PASO: SELECCIÓN DE PRODUCTO ────────────────────────────
