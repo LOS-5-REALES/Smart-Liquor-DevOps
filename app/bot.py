@@ -1,10 +1,9 @@
 """
-Módulo del Bot de WhatsApp con Registro Ultra Robusto basado en Etiquetas Key-Value.
-Optimizado para capturar datos en un solo mensaje identificando los campos de texto
-mediante expresiones regulares, asegurando el commit en la base de datos de Supabase.
+Módulo del Bot de WhatsApp con Registro Ultra Robusto basado en Extracción por Índices.
+Optimizado para capturar datos en un solo mensaje identificando los bloques de texto
+mediante búsquedas directas de palabras clave, asegurando el commit en Supabase.
 """
 
-import re
 import traceback
 from twilio.twiml.messaging_response import MessagingResponse
 from sqlalchemy.orm import Session
@@ -36,36 +35,49 @@ def verificar_registro_cliente(telefono: str) -> bool:
 
 def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
     """
-    Parsea el mensaje buscando patrones como 'Nombre:', 'Dirección:' y 'Referencia:'.
-    Es totalmente inmune a si los datos vienen separados por espacios, saltos de línea o barras.
+    Parsea el mensaje buscando las etiquetas 'Nombre:', 'Dirección:' y 'Referencia:'.
+    Corta los bloques de texto de manera exacta, aislando asteriscos o saltos corruptos.
     """
     print(f"[LOG SERVER] Texto crudo recibido para procesar:\n{texto_registro}")
 
+    # Normalizamos temporalmente a minúsculas solo para buscar las posiciones de las etiquetas
+    texto_bajo = texto_registro.lower()
+
+    # Validación estricta de palabras clave indispensables
+    if "nombre" not in texto_bajo or "direc" not in texto_bajo or "referencia" not in texto_bajo:
+        print("[REGISTRO FALLIDO] Faltan etiquetas indispensables en el mensaje.")
+        return False
+
     try:
-        # Buscamos los patrones clave ignorando mayúsculas/minúsculas. 
-        # Captura todo el contenido posterior a la etiqueta hasta encontrarse con otra etiqueta o el fin del texto.
-        match_nombre = re.search(r'(?:nombre|cliente)\s*:\s*(.*?)(?=(?:direcci[óo]n|referencia|$))', texto_registro, re.IGNORECASE | re.DOTALL)
-        match_direccion = re.search(r'(?:direcci[óo]n|dir)\s*:\s*(.*?)(?=(?:nombre|referencia|$))', texto_registro, re.IGNORECASE | re.DOTALL)
-        match_referencia = re.search(r'(?:referencia|ref)\s*:\s*(.*?)(?=(?:nombre|direcci[óo]n|$))', texto_registro, re.IGNORECASE | re.DOTALL)
+        # 1. EXTRAER NOMBRE: Todo lo que esté entre 'nombre:' y la palabra 'dirección/direccion/dir'
+        inicio_nombre = texto_bajo.find("nombre:") + len("nombre:")
+        fin_nombre = texto_bajo.find("direc")
+        nombre_raw = texto_registro[inicio_nombre:fin_nombre]
+        nombre = nombre_raw.replace(":", "").replace("*", "").strip().splitlines()[0].strip()
 
-        # Si no se encuentra alguna de las tres palabras clave requeridas, rechazamos el registro
-        if not match_nombre or not match_direccion or not match_referencia:
-            print("[REGISTRO FALLIDO] No se detectaron las etiquetas requeridas (Nombre/Dirección/Referencia).")
-            return False
+        # 2. EXTRAER DIRECCIÓN: Todo lo que esté entre la etiqueta de dirección y 'referencia'
+        inicio_dir_raiz = texto_bajo.find("direc")
+        texto_recortado_dir = texto_bajo[inicio_dir_raiz:]
+        index_dos_puntos_dir = texto_recortado_dir.find(":")
+        
+        inicio_dir_real = inicio_dir_raiz + index_dos_puntos_dir + 1
+        fin_dir = texto_bajo.find("referencia")
+        direccion_raw = texto_registro[inicio_dir_real:fin_dir]
+        direccion = direccion_raw.replace("*", "").strip().splitlines()[0].strip()
 
-        # Extraemos y limpiamos los textos de espacios innecesarios o caracteres extra residuales
-        nombre = match_nombre.group(1).strip().replace("\n", " ")
-        direccion = match_direccion.group(1).strip().replace("\n", " ")
-        referencia = match_referencia.group(1).strip().replace("\n", " ")
+        # 3. EXTRAER REFERENCIA: Todo lo que esté desde 'referencia:' hasta el final del mensaje
+        inicio_ref = texto_bajo.find("referencia:") + len("referencia:")
+        referencia_raw = texto_registro[inicio_ref:]
+        referencia = referencia_raw.replace(":", "").replace("*", "").strip().splitlines()[0].strip()
 
-        # Validamos que ninguna variable haya quedado vacía tras la limpieza
+        print(f"[LOG PARSED SUCCESS] Nombre: '{nombre}' | Dirección: '{direccion}' | Referencia: '{referencia}'")
+
+        # Validación final de que los campos no se hayan extraído vacíos
         if not nombre or not direccion or not referencia:
-            print(f"[REGISTRO FALLIDO] Datos incompletos tras parsing -> Nombre: '{nombre}', Dir: '{direccion}', Ref: '{referencia}'")
+            print("[REGISTRO FALLIDO] Datos incompletos tras la segmentación por texto.")
             return False
 
-        print(f"[LOG PARSED SUCCESS] Nombre: {nombre} | Dirección: {direccion} | Referencia: {referencia}")
-
-        # Guardado en Supabase utilizando la sesión SQLAlchemy
+        # Guardado directo en la base de datos de Supabase
         with Session(engine) as db:
             cliente = db.query(models.Cliente).filter(models.Cliente.telefono == telefono).first()
             if not cliente:
@@ -76,12 +88,12 @@ def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
             cliente.direccion_exacta = direccion
             cliente.referencia_ubicacion = referencia
             
-            db.commit()  # Persistencia inmediata en la base de datos
+            db.commit()  # Confirmación síncrona en base de datos
             print(f"[REGISTRO EXITOSO] Cliente {telefono} guardado correctamente en Supabase.")
             return True
 
     except Exception as e:
-        print(f"[ERROR EXCEPCIÓN BD] Falló la inserción transaccional: {e}")
+        print(f"[ERROR EXCEPCIÓN BD] Falló el guardado del cliente: {e}")
         traceback.print_exc()
         return False
 
