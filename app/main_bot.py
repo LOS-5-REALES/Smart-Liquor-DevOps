@@ -49,8 +49,9 @@ async def whatsapp_webhook(
     Este endpoint es consumido exclusivamente por los servidores de **Twilio**.
 
     1. Recibe el mensaje entrante del usuario y su número telefónico.
-    2. Lo pasa al motor lógico indexando el estado por su número ('From').
-    3. Devuelve las instrucciones de respuesta en formato XML.
+    2. Realiza un parsing/limpieza del número para extraer los datos reales limpios.
+    3. Lo pasa al motor lógico indexando el estado por su número de celular puro.
+    4. Devuelve las instrucciones de respuesta en formato XML.
 
     Args:
         Body (str): El contenido de texto del mensaje de WhatsApp extraído del formulario.
@@ -60,10 +61,20 @@ async def whatsapp_webhook(
         Response: Respuesta HTTP con encabezado `application/xml` conteniendo
                   las instrucciones TwiML para Twilio.
     """
-    print(f"[WHATSAPP] De: {From} | Mensaje: {Body}")
+    print(f"[WHATSAPP ORIGINAL] De: {From} | Mensaje: {Body}")
     
-    # 💥 MODIFICACIÓN CRÍTICA: Pasamos el 'From' real para habilitar el entorno multiusuario y el registro
-    respuesta_xml = procesar_mensaje(Body, telefono=From)
+    # 🧼 LIMPIEZA DE DATOS REALES:
+    # Twilio envía "whatsapp:+51999888777". Removemos el prefijo para dejar solo los 9 dígitos "999888777".
+    telefono_limpio = From.replace("whatsapp:", "").replace("+51", "").strip()
+    
+    # Salvaguarda por si el formato del remitente varía o llega vacío
+    if not telefono_limpio:
+        telefono_limpio = "default"
+
+    print(f"[WHATSAPP PROCESADO] Celular Limpio para BD: {telefono_limpio}")
+    
+    # 💥 ENTRADA MULTIUSUARIO CORREGIDA: Pasamos el teléfono real limpio a la lógica y base de datos
+    respuesta_xml = procesar_mensaje(Body, telefono=telefono_limpio)
     
     return Response(content=respuesta_xml, media_type="application/xml")
 
