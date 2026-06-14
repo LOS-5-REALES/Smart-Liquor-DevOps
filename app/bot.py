@@ -1,5 +1,5 @@
 """
-Módulo del Bot de WhatsApp con Registro Ultra Robusto basado en Extracción por Índices.
+Módulo del Bot de WhatsApp con Registros Ultra Robusto basado en Extracción por Índices.
 Optimizado para capturar datos en un solo mensaje identificando los bloques de texto
 mediante búsquedas directas de palabras clave, asegurando el commit en Supabase y
 un flujo conversacional fluido con el cliente.
