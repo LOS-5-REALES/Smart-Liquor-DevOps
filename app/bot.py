@@ -296,7 +296,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
 
 
 def ir_a_seleccion_productos(msg, sesion):
-    """Muestra el catálogo y cambia el estado para recibir la elección del licor."""
+    """Muestras el catálogo y cambia el estado para recibir la elección del licor."""
     try:
         productos = obtener_catalogo()
         if not productos:
