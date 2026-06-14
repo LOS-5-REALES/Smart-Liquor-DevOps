@@ -1,4 +1,3 @@
-# app/main_bot.py
 """
 Punto de entrada del microservicio del Bot de WhatsApp.
 

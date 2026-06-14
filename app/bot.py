@@ -1,6 +1,6 @@
 """
-Módulo del Bot de WhatsApp con Registro Ultra Robusto y Flexible.
-Optimizado para capturar datos en un solo mensaje tolerando variaciones de formato,
+Módulo del Bot de WhatsApp con Registro por Saltos de Línea (Enter).
+Optimizado para capturar datos en un solo mensaje estructurado por líneas,
 asegurando el commit en la base de datos y previniendo congelamientos.
 """
 
@@ -22,41 +22,35 @@ def obtener_catalogo() -> list:
         ).all()
 
 
-def verificar_registro_cliente(telefono: str) -> models.Cliente | None:
+def verificar_registro_cliente(telefono: str) -> bool:
     """Verifica si el cliente existe y tiene sus datos completos."""
     with Session(engine) as db:
         cliente = db.query(models.Cliente).filter(
             models.Cliente.telefono == telefono
         ).first()
         if not cliente or not cliente.direccion_exacta or cliente.nombre_completo == "Cliente WhatsApp":
-            return None
-        # Retornamos una copia plana para evitar problemas de sesión fuera del bloque with
-        return True 
+            return False
+        return True
 
 
 def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
     """
-    Parsea el mensaje con máxima tolerancia a fallos (barras, comas o guiones)
-    y asegura el guardado persistente en Supabase.
+    Parsea el mensaje dividiendo el texto línea por línea (usando saltos de línea).
+    Elimina la necesidad de usar barras diagonales u otros símbolos molestos.
     """
-    # Intentamos separar por barras, comas o guiones largos
-    partes = []
-    if "/" in texto_registro:
-        partes = [p.strip() for p in texto_registro.split("/")]
-    elif "," in texto_registro:
-        partes = [p.strip() for p in texto_registro.split(",")]
-    elif "-" in texto_registro:
-        partes = [p.strip() for p in texto_registro.split("-")]
+    print(f"[LOG SERVER] Texto crudo recibido para procesar:\n{texto_registro}")
 
-    # Si no tiene separadores claros, intentamos una división por líneas
-    if len(partes) < 3:
-        partes = [p.strip() for p in texto_registro.splitlines() if p.strip()]
+    # Separamos el bloque de texto por cada salto de línea y limpiamos espacios vacíos
+    partes = [p.strip() for p in texto_registro.splitlines() if p.strip()]
+    
+    print(f"[LOG SERVER] Líneas útiles detectadas: {partes} | Cantidad: {len(partes)}")
 
-    # Si aun así no tenemos los 3 datos obligatorios, no podemos registrar
+    # Validamos que el cliente haya ingresado al menos las 3 líneas obligatorias
     if len(partes) < 3 or not partes[0] or not partes[1] or not partes[2]:
-        print(f"[REGISTRO FALLIDO] No se pudieron extraer 3 partes del texto: {texto_registro}")
+        print(f"[REGISTRO FALLIDO] No se encontraron las 3 líneas requeridas en el mensaje.")
         return False
 
+    # Asignamos el orden estricto de las líneas
     nombre, direccion, referencia = partes[0], partes[1], partes[2]
 
     try:
@@ -70,11 +64,11 @@ def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
             cliente.direccion_exacta = direccion
             cliente.referencia_ubicacion = referencia
             
-            db.commit() # Forzar el guardado inmediato en Supabase
-            print(f"[REGISTRO EXITOSO] Cliente {telefono} guardado correctamente.")
+            db.commit()  # Persistencia inmediata en la base de datos de Supabase
+            print(f"[REGISTRO EXITOSO] Cliente {telefono} guardado correctamente en Supabase.")
             return True
     except Exception as e:
-        print(f"[ERROR BD] Falló la inserción en Supabase: {e}")
+        print(f"[ERROR BD] Falló la inserción transaccional: {e}")
         traceback.print_exc()
         return False
 
@@ -178,10 +172,15 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     "📝 *REGISTRO DE CLIENTE NUEVO* 🏡\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     "Para poder procesar tus pedidos y gestionar el delivery en Chincha, necesitamos tus datos.\n\n"
-                    "👉 Por favor, envíanos tu información en un *SOLO MENSAJE* separado por barras diagonales *( / )* con el siguiente formato:\n\n"
-                    "*Nombre Completo / Dirección Exacta / Referencia*\n\n"
+                    "👉 Por favor, envíanos tu información en un *SOLO MENSAJE* escribiendo cada dato en una **línea diferente** (presionando la tecla Enter en tu teclado):\n\n"
+                    "✍️ *Formato requerido:*\n"
+                    "Línea 1: Nombre Completo\n"
+                    "Línea 2: Dirección Exacta\n"
+                    "Línea 3: Referencia de tu casa\n\n"
                     "💡 *Ejemplo exacto a enviar:* \n"
-                    "_Carlos Mendoza Ruiz / Av. Benavides 412, Chincha Alta / Frente al Grifo Primax_"
+                    "Carlos Mendoza Ruiz\n"
+                    "Av. Benavides 412, Chincha Alta\n"
+                    "Frente al Grifo Primax"
                 )
             else:
                 ir_a_seleccion_productos(msg, sesion)
@@ -192,13 +191,14 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
     elif paso == "esperando_registro_unico":
         exito = registrar_cliente_completo(telefono, mensaje)
         if exito:
-            # Si se guardó con éxito en Supabase, avanzamos inmediatamente al flujo de licores
             ir_a_seleccion_productos(msg, sesion)
         else:
             msg.body(
                 "⚠️ *No pudimos procesar el registro.*\n\n"
-                "Asegúrate de enviar los 3 datos separados claramente por una barra diagonal *( / )*:\n\n"
-                "👉 _Nombre Completo / Dirección Exacta / Referencia_"
+                "Por favor, asegúrate de enviar tus 3 datos utilizando **líneas separadas** (presionando Enter):\n\n"
+                "1️⃣ Tu Nombre Completo\n"
+                "2️⃣ Tu Dirección Exacta\n"
+                "3️⃣ Una Referencia Cercana"
             )
 
     # ── PASO: SELECCIÓN DE PRODUCTO ────────────────────────────
