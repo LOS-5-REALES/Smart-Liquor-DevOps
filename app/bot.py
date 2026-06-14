@@ -1,7 +1,8 @@
 """
 Módulo del Bot de WhatsApp con Registro Ultra Robusto basado en Extracción por Índices.
 Optimizado para capturar datos en un solo mensaje identificando los bloques de texto
-mediante búsquedas directas de palabras clave, asegurando el commit en Supabase.
+mediante búsquedas directas de palabras clave, asegurando el commit en Supabase y
+un flujo conversacional fluido con el cliente.
 """
 
 import traceback
@@ -90,6 +91,11 @@ def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
             
             db.commit()  # Confirmación síncrona en base de datos
             print(f"[REGISTRO EXITOSO] Cliente {telefono} guardado correctamente en Supabase.")
+            
+            # Inicializamos y limpiamos el estado de la memoria para evitar que el bot se quede mudo
+            if telefono in sesiones:
+                sesiones[telefono]["paso"] = "eligiendo_producto"
+                
             return True
 
     except Exception as e:
@@ -144,13 +150,14 @@ def registrar_pedido(telefono: str, producto_id: int, cantidad: int) -> tuple[bo
 
 def menu_principal() -> str:
     return (
-        "👋 *Bienvenido a Smart-Liquor* 🍷\n\n"
-        "¿Qué deseas hacer?\n\n"
-        "1️⃣ Ver catálogo\n"
-        "2️⃣ Hacer un pedido 🛒\n"
-        "3️⃣ Info de delivery\n"
-        "4️⃣ Métodos de pago\n\n"
-        "👉 Responde con el número de la opción."
+        "👋 *¡Bienvenido a Smart-Liquor!* 🍷\n"
+        "Tu distribuidora de confianza en Chincha.\n\n"
+        "¿Qué te provoca llevar hoy?\n\n"
+        "1️⃣ Explora nuestro catálogo ✨\n"
+        "2️⃣ Iniciar un pedido nuevo 🛒\n"
+        "3️⃣ Cobertura y Delivery 🚚\n"
+        "4️⃣ Cuentas y Métodos de pago 💳\n\n"
+        "👉 Escribe solo el *número* de tu opción favorita."
     )
 
 
@@ -194,14 +201,13 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             if not verificar_registro_cliente(telefono):
                 sesion["paso"] = "esperando_registro_unico"
                 msg.body(
-                    "📝 *REGISTRO DE CLIENTE NUEVO* 🏡\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    "Para poder procesar tus pedidos y gestionar el delivery en Chincha, necesitamos tus datos.\n\n"
-                    "👉 Por favor, *COPIA, PEGA y LLENA* el siguiente formato en un *SOLO MENSAJE*:\n\n"
-                    "*Nombre:* Tu Nombre Completo\n"
-                    "*Dirección:* Tu Dirección Exacta\n"
-                    "*Referencia:* Una Referencia de tu casa\n\n"
-                    "💡 *Ejemplo exacto a enviar:* \n"
+                    "✨ *¡Estás a un paso de tu pedido!* ✨\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "Para llevar tus licores favoritos hasta la puerta de tu casa en Chincha, por favor envíanos tus datos de entrega en un solo mensaje siguiendo este formato simple:\n\n"
+                    "📍 *Nombre:* Tu Nombre y Apellido\n"
+                    "📍 *Dirección:* Calle, Número o Distrito\n"
+                    "📍 *Referencia:* Color de fachada, negocio cercano, etc.\n\n"
+                    "💡 *Ejemplo rápido:*\n"
                     "Nombre: Jesús Loza Yataco\n"
                     "Dirección: Av Emancipación 345, Sunampe\n"
                     "Referencia: Al costado de una antena"
@@ -218,8 +224,8 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             ir_a_seleccion_productos(msg, sesion)
         else:
             msg.body(
-                "⚠️ *No pudimos procesar tu registro.*\n\n"
-                "Asegúrate de copiar el formato incluyendo las palabras clave y los dos puntos (*:*):\n\n"
+                "⚠️ *No pudimos procesar tus datos.*\n\n"
+                "Por favor, asegúrate de escribir las palabras clave seguidas de los dos puntos (*:*):\n\n"
                 "👉 *Nombre:* Tu Nombre\n"
                 "👉 *Dirección:* Tu Dirección\n"
                 "👉 *Referencia:* Tu Referencia"
@@ -296,16 +302,21 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
 
 
 def ir_a_seleccion_productos(msg, sesion):
-    """Muestras el catálogo y cambia el estado para recibir la elección del licor."""
+    """Muestra el catálogo y cambia el estado para recibir la elección del licor."""
     try:
         productos = obtener_catalogo()
         if not productos:
             msg.body("😔 No hay licores disponibles en este instante.")
         else:
-            texto = "✅ *¡Registro completado con éxito!* 🎉\n\n🛒 *¿Qué deseas pedir hoy?*\n\n"
+            texto = (
+                "✅ *¡Datos guardados con éxito!* 🎉\n"
+                "Ya quedaste registrado en nuestro sistema.\n\n"
+                "🛒 *¿Qué deseas pedir hoy?*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+            )
             for i, p in enumerate(productos, 1):
                 texto += f"{i}. {p.nombre} — S/ {p.precio_venta:.2f}\n"
-            texto += "\n👉 Responde con el *número* del producto:"
+            texto += "\n👉 Responde con el *número* del producto para agregarlo a tu carrito:"
             
             sesion["paso"] = "eligiendo_producto"
             sesion["productos"] = [(p.id, p.nombre, p.precio_venta) for p in productos]
