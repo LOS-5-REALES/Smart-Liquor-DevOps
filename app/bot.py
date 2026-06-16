@@ -160,17 +160,18 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
     response = MessagingResponse()
     msg      = response.message()
 
-    if telefono not in sesiones:
-        sesiones[telefono] = {"paso": "menu"}
+    # Sanitizar número (limpiar prefijos de twilio si vienen adjuntos)
+    telefono_limpio = telefono.replace("whatsapp:", "").replace("+", "").strip()
 
-    sesion = sesiones[telefono]
+    if telefono_limpio not in sesiones:
+        sesiones[telefono_limpio] = {"paso": "menu"}
+
+    sesion = sesiones[telefono_limpio]
     paso   = sesion.get("paso", "menu")
 
     # 🚨 INTERCEPTOR EXCLUSIVO: Retorno automatizado desde la App Web (Flet)
-    # Formato esperado: PEDIDO_WEB:ID=15|CANT=2
     if mensaje.startswith("PEDIDO_WEB:"):
         try:
-            # Parseamos la información empaquetada que envió el frontend
             datos_raw = mensaje.replace("PEDIDO_WEB:", "").strip()
             partes = datos_raw.split("|")
             prod_id = int(partes[0].split("=")[1])
@@ -184,8 +185,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                 
                 total = float(producto.precio_venta or 0.0) * cantidad
                 
-                # Muta la sesión al paso final de confirmación
-                sesiones[telefono] = {
+                sesiones[telefono_limpio] = {
                     "paso": "confirmando",
                     "producto_id": prod_id,
                     "producto_nombre": producto.nombre,
@@ -210,15 +210,14 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
 
     # ── CONTROL LOGÍSTICO DE NAVEGACIÓN COMÚN ─────────────────
     if msg_bajo in ["hola", "inicio", "menu", "menú", "cancelar"]:
-        sesiones[telefono] = {"paso": "menu"}
+        sesiones[telefono_limpio] = {"paso": "menu"}
         msg.body(menu_principal())
         return str(response)
 
     # ── PASO: MENÚ PRINCIPAL ───────────────────────────────────
     if paso == "menu":
         if mensaje in ["1", "2"]:
-            # Validamos si está registrado. Si no, obligamos a capturar sus datos primero
-            if not verificar_registro_cliente(telefono):
+            if not verificar_registro_cliente(telefono_limpio):
                 sesion["paso"] = "esperando_registro_unico"
                 msg.body(
                     "✨ *¡Estás a un paso de tu pedido!* ✨\n"
@@ -233,8 +232,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     "Referencia: Frente a la plaza principal, portón marrón"
                 )
             else:
-                # Modificado: Si ya está registrado, le escupimos el link directo
-                msg.body(generar_enlace_catalogo(telefono))
+                msg.body(generar_enlace_catalogo(telefono_limpio))
             return str(response)
         else:
             msg.body("🤔 Opción no válida.\n\n" + menu_principal())
@@ -242,10 +240,9 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
 
     # ── PASO: CAPTURA Y VALIDACIÓN DEL REGISTRO ────────────────
     elif paso == "esperando_registro_unico":
-        exito = registrar_cliente_completo(telefono, mensaje)
+        exito = registrar_cliente_completo(telefono_limpio, mensaje)
         if exito:
-            # Enviamos el link mágico inmediatamente después del registro exitoso
-            msg.body(generar_enlace_catalogo(telefono))
+            msg.body(generar_enlace_catalogo(telefono_limpio))
         else:
             msg.body(
                 "⚠️ *No pudimos procesar tus datos.*\n\n"
@@ -259,8 +256,8 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
     # ── PASO: CONFIRMACIÓN DEL PEDIDO (VÍA RETORNO WEB) ────────
     elif paso == "confirmando":
         if msg_bajo in ["si", "sí", "yes", "confirmar", "ok"]:
-            ok, resultado = registrar_pedido(telefono, sesion["producto_id"], sesion["cantidad"])
-            sesiones[telefono] = {"paso": "menu"}
+            ok, resultado = registrar_pedido(telefono_limpio, sesion["producto_id"], sesion["cantidad"])
+            sesiones[telefono_limpio] = {"paso": "menu"}
 
             if ok:
                 msg.body(
@@ -271,7 +268,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             else:
                 msg.body(f"⚠️ Error: {resultado}\n\nEscribe *INICIO*.")
         elif msg_bajo in ["no", "cancelar"]:
-            sesiones[telefono] = {"paso": "menu"}
+            sesiones[telefono_limpio] = {"paso": "menu"}
             msg.body("❌ Pedido cancelado.\n\n" + menu_principal())
         else:
             msg.body("👉 Responde *SI* para confirmar o *NO* para anular.")
@@ -281,17 +278,29 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
 
 
 def generar_enlace_catalogo(telefono: str) -> str:
-    """Construye la respuesta interactiva con el enlace dinámico hacia la web app."""
+    """Construye la respuesta interactiva con el enlace dinámico y limpio hacia la web app."""
+    # Extraer el nombre real de la base de datos para no decir siempre "Carlos"
+    nombre_cliente = "Cliente"
+    try:
+        with Session(engine) as db:
+            cliente = db.query(models.Cliente).filter(models.Cliente.telefono == telefono).first()
+            if cliente and cliente.nombre_completo:
+                nombre_cliente = cliente.nombre_completo.split()[0]  # Tomamos solo el primer nombre
+    except Exception:
+        pass
+
+    # Formateo estricto del hipervínculo
     url_inteligente = f"{BASE_URL_WEB}/?telefono={telefono}"
     
-    # Marcamos la sesión en un estado de espera interactivo
+    # Seteamos el estado de espera
     sesiones[telefono] = {"paso": "esperando_carrito_web"}
     
+    # Devolvemos la plantilla limpia aislando el link de caracteres especiales que rompan el parseo de WhatsApp
     return (
-        "🛒 *¡CATÁLOGO DIGITAL SMART-LIQUOR!* 🍷\n"
+        f"🛒 *¡HOLA {nombre_cliente.upper()}! AQUÍ TIENES TU CATÁLOGO* 🍷\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Carlos, hemos abierto nuestro inventario completo de más de 130 licores para ti. "
-        "Usa nuestro buscador interactivo, mira las marcas disponibles y arma tu carrito de forma rápida desde tu celular aquí:\n\n"
-        f"🔗 {url_inteligente}\n\n"
-        "💡 *¿Cómo funciona?* Elige tus productos en la web y al darle a 'Confirmar', regresarás aquí automáticamente para cerrar tu entrega."
+        "Hemos abierto nuestro inventario completo con stock en tiempo real en Chincha. "
+        "Arma tu carrito de forma rápida haciendo clic directamente aquí:\n\n"
+        f"{url_inteligente}\n\n"
+        "💡 Elige tus productos en la web y al darle a 'Confirmar', regresarás aquí automáticamente."
     )

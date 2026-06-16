@@ -22,9 +22,6 @@ app = FastAPI(
 def health_check():
     """
     Verifica si el servidor del bot está encendido y respondiendo.
-
-    Returns:
-        dict: Un diccionario JSON indicando el estado operativo del servicio.
     """
     return {"status": "Bot WhatsApp operativo"}
 
@@ -48,27 +45,26 @@ async def whatsapp_webhook(
     Este endpoint es consumido exclusivamente por los servidores de **Twilio**.
 
     1. Recibe el mensaje entrante del usuario y su número telefónico original.
-    2. Realiza un parsing/limpieza del número para extraer los datos reales puros de 9 dígitos.
+    2. Realiza un parsing/limpieza estricto para extraer solo el número puro sin prefijos.
     3. Lo pasa al motor lógico indexando el estado de forma multiusuario.
     4. Devuelve las instrucciones de respuesta en formato XML compatible con Twilio (text/xml).
     """
     print(f"[WHATSAPP ORIGINAL] De: {From} | Mensaje: {Body}")
     
-    # 🧼 LIMPIEZA DE DATOS REALES COMERCIALES:
-    # Twilio nos envía el string como "whatsapp:+51999888777". 
-    # Removemos los prefijos para interactuar con la BD de Supabase usando el número de celular limpio.
-    telefono_limpio = From.replace("whatsapp:", "").replace("+51", "").strip()
+    # 🧼 LIMPIEZA DE DATOS REALES COMERCIALES UNIFICADA:
+    # Quitamos "whatsapp:", espacios, símbolos de suma y forzamos a que maneje la sesión de forma limpia.
+    # Conservamos el formato de guardado idéntico al que procesará bot.py de manera interna.
+    telefono_limpio = From.replace("whatsapp:", "").replace("+", "").strip()
     
-    # Salvaguarda de respaldo por si el formato del payload entrante varía
     if not telefono_limpio:
         telefono_limpio = "default"
 
-    print(f"[WHATSAPP PROCESADO] Celular Limpio para BD: {telefono_limpio}")
+    print(f"[WHATSAPP PROCESADO] Celular Limpio para BD y Sesiones: {telefono_limpio}")
     
-    # 💥 CONEXIÓN INTEGRAL: Pasamos el teléfono real depurado a la base de datos
+    # 💥 CONEXIÓN INTEGRAL: Pasamos el teléfono real depurado de forma homogénea
     respuesta_xml = procesar_mensaje(Body, telefono=telefono_limpio)
     
-    # 🚨 CAMBIO CRÍTICO AQUÍ: Cambiamos a media_type="text/xml" para que Twilio lea el XML correctamente
+    # 🚨 RESPUESTA TwiML COMPATIBLE: text/xml para la correcta interpretación de hipervínculos en Twilio
     return Response(content=respuesta_xml, media_type="text/xml")
 
 

@@ -1,5 +1,6 @@
 # app/main.py
 import os
+import re
 import fastapi
 import flet as ft
 import flet_fastapi
@@ -27,23 +28,22 @@ async def app_con_login(page: ft.Page):
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor    = "#0b0d0f"
 
-    # ── 🔍 INTERCEPCIÓN DE CONTROL DE RUTAS PARA ENTORNO WEB ──
-    # Extraemos de forma nativa si hay un parámetro de teléfono del cliente
+    # ── 🔍 EXTRACCIÓN BLINDADA Y SEGURA DEL TELÉFONO ──
     telefono_cliente = None
-    if page.query:
-        telefono_cliente = page.query.get("telefono")
     
-    # Redirección de contingencia analizando la URL cruda
-    if not telefono_cliente and "?" in str(page.route):
-        try:
-            raw_params = str(page.route).split("?")[1]
-            for param in raw_params.split("&"):
-                if "=" in param:
-                    k, v = param.split("=")
-                    if k == "telefono":
-                        telefono_cliente = v
-        except Exception:
-            pass
+    # Método 1: Intentar leer de page.query de forma segura usando getattr por si viene vacío o None
+    try:
+        query_obj = getattr(page, "query", None)
+        if query_obj and hasattr(query_obj, "get"):
+            telefono_cliente = query_obj.get("telefono")
+    except Exception:
+        pass
+    
+    # Método 2 (El más estable en flet_fastapi): Analizar el string de la ruta cruda con RegEx
+    if not telefono_cliente and page.route:
+        match = re.search(r"telefono=([0-9]+)", str(page.route))
+        if match:
+            telefono_cliente = match.group(1)
 
     async def mostrar_login():
         from componentes.login_screen import build_login_screen
@@ -69,15 +69,16 @@ async def app_con_login(page: ft.Page):
 
     # 🚨 CONTROL FLUJO MAESTRO INTERACTIVO
     if telefono_cliente:
-        # ¡Atajo mágico! Si es un cliente real desde WhatsApp con parámetro, 
-        # limpiamos la interfaz por completo de forma asíncrona y renderizamos el catálogo express.
         print(f"[MAIN CONTROL] Redirección Directa al Catálogo sin Login para: {telefono_cliente}")
         from ui import main as build_dashboard
-        await page.clean_async() # 👈 Asegura un renderizado limpio en móviles
+        
+        # Guardamos el teléfono en la sesión para que ui.py lo lea directamente de aquí sin recalcular la URL
+        page.session.set("telefono_cliente_whatsapp", telefono_cliente)
+        
+        await page.clean_async() 
         page.padding = 0
         await build_dashboard(page)
     else:
-        # Si no hay teléfono, es el administrador intentando ver las finanzas
         print("[MAIN CONTROL] Acceso estándar. Cargando pantalla de Login administrativo.")
         await mostrar_login()
 

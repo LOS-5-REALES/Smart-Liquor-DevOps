@@ -39,25 +39,9 @@ async def main(page: ft.Page):
     page.padding    = 0
     page.scroll     = ft.ScrollMode.ADAPTIVE
 
-    # ── 🔍 DETECCIÓN NATIVA Y ROBUSTA DE PARÁMETROS EN LA URL (MODO CLIENTE) ──
-    # Usamos page.query para entornos web estables en producción (Azure / Ngrok)
-    telefono_cliente = None
-    
-    if page.query:
-        telefono_cliente = page.query.get("telefono")
-    
-    # Contingencia por si las rutas vienen crudas en el page.route string
-    if not telefono_cliente and "?" in str(page.route):
-        try:
-            raw_params = str(page.route).split("?")[1]
-            for param in raw_params.split("&"):
-                if "=" in param:
-                    k, v = param.split("=")
-                    if k == "telefono":
-                        telefono_cliente = v
-        except Exception:
-            pass
-
+    # ── 🔍 DETECCIÓN DESDE LA SESIÓN COMPARTIDA POR MAIN ──
+    # Leemos la variable segura que se validó e inyectó de forma limpia en app/main.py
+    telefono_cliente = page.session.get("telefono_cliente_whatsapp")
     es_modo_cliente = telefono_cliente is not None
 
     # Si es un cliente real desde WhatsApp, cargamos la experiencia del Catálogo Digital Interactivo
