@@ -442,8 +442,8 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
         url_whatsapp = f"https://wa.me/{NUMERO_BOT_WHATSAPP}?text={mensaje_formateado}"
         await page.launch_url_async(url_whatsapp)
 
-    def actualizar_ui_checkout():
-        # Si estamos en modo lectura, obligamos a que el panel inferior nunca se dibuje
+    # CORREGIDO: Lógica reactiva puramente asíncrona para refrescar componentes dinámicos
+    async def actualizar_ui_checkout():
         if modo == "ver" or not carrito_compra:
             btn_checkout_container.visible = False
         else:
@@ -451,7 +451,7 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
             item = carrito_compra[prod_id]
             txt_checkout.value = f"Confirmar Pedido: {item['cantidad']} x {item['nombre']} (S/ {item['cantidad'] * item['precio']:.2f}) 🛒"
             btn_checkout_container.visible = True
-        page.update()
+        await page.update_async()
 
     def modificar_unidades(producto, operacion, txt_contador):
         p_id = producto.id
@@ -479,7 +479,8 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
                     txt_contador.value = "0"
                     txt_contador.visible = False
 
-        actualizar_ui_checkout()
+        # Lanzamiento seguro del hilo de refresco visual asíncrono
+        page.run_task(actualizar_ui_checkout)
 
     async def renderizar_catalogo_cliente(termino=""):
         try:
@@ -504,6 +505,11 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
             for p in prods:
                 precio = float(p.precio_venta or 0.0)
                 txt_unidades = ft.Text("0", size=14, weight="bold", color="#fbbf24", visible=False)
+                
+                # CORREGIDO: Al reconstruir el catálogo por búsqueda o inicio, mantiene el estado visual del contador
+                if p.id in carrito_compra:
+                    txt_unidades.value = str(carrito_compra[p.id]["cantidad"])
+                    txt_unidades.visible = True
                 
                 # Fila de control dinámico +/- (Sólo visible si modo == "pedido")
                 controles_carrito = ft.Row([
@@ -530,7 +536,7 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
                             padding=10, border_radius=8
                         ),
                         ft.Column([
-                            # CORREGIDO: Propiedad nativa exacta de truncado con doble L (ELLIPSIS)
+                            # Propiedad nativa exacta de truncado con doble L (ELLIPSIS)
                             ft.Text(p.nombre, size=14, weight="bold", color="white", max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                             ft.Text(f"S/ {precio:.2f}", size=13, color="#fbbf24", weight="w600"),
                             ft.Text(f"Disponibles: {p.stock_actual} uds", size=10, color="grey")
@@ -598,6 +604,7 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
         on_click=lambda e: page.run_task(enviar_carrito_a_whatsapp)
     )
 
+    # CORREGIDO: Limpieza y estructuración del viewport del cliente para evitar desbordamientos
     page.controls.clear()
     page.controls.extend([
         header_cliente,
@@ -605,12 +612,14 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
             content=grid_productos_ui,
             padding=16,
             expand=True
-        ),
-        ft.Container(
-            content=btn_checkout_container,
-            padding=16,
-            bgcolor="#0b0d0f"
         )
     ])
+    
+    # CORREGIDO: Anclaje estricto del Checkout al BottomAppBar nativo del viewport del navegador móvil
+    page.bottom_appbar = ft.BottomAppBar(
+        content=ft.Container(content=btn_checkout_container, padding=10, bgcolor="#0b0d0f"),
+        bgcolor="#0b0d0f",
+        height=80
+    )
     
     await renderizar_catalogo_cliente()
