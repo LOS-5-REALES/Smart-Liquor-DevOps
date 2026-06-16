@@ -21,6 +21,8 @@ from componentes import (
     build_modal_pedido,
 )
 
+# Configuración del Número del Bot para el redireccionamiento (Formato Internacional sin el +)
+NUMERO_BOT_WHATSAPP = "51977860423"  
 
 async def run_db(fn):
     def _execute():
@@ -30,25 +32,43 @@ async def run_db(fn):
 
 
 async def main(page: ft.Page):
-    page.title      = "Smart-Liquor Admin Panel"
+    page.title      = "Smart-Liquor"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor    = "#0b0d0f"
     page.padding    = 0
     page.scroll     = ft.ScrollMode.ADAPTIVE
 
+    # ── 🔍 DETECCIÓN DE PARÁMETROS EN LA URL (MODO CLIENTE) ──
+    # Flet expone los parámetros de la URL a través de page.route
+    url_params = {}
+    if "?" in page.route:
+        raw_params = page.route.split("?")[1]
+        for param in raw_params.split("&"):
+            if "=" in param:
+                k, v = param.split("=")
+                url_params[k] = v
+
+    telefono_cliente = url_params.get("telefono", None)
+    es_modo_cliente = telefono_cliente is not None
+
+    # Si es un cliente real desde WhatsApp, cargamos la experiencia del Catálogo Digital Interactivo
+    if es_modo_cliente:
+        await cargar_interfaz_cliente(page, telefono_cliente)
+        return
+
+    # ─────────────────────────────────────────────────────────────────────────────────────────
+    # ── ⚙️ INTERFAZ ADMINISTRATIVA COMPLETA (ROL: ADMIN / LOGÍSTICA CHINCHA) ──────────────────
+    # ─────────────────────────────────────────────────────────────────────────────────────────
     lista_pedidos_ui    = ft.Column(spacing=12, scroll=ft.ScrollMode.ADAPTIVE)
     lista_inventario_ui = ft.Column(spacing=10, scroll=ft.ScrollMode.ADAPTIVE)
     _todos_los_pedidos  = []
 
-    # ── Métricas ─────────────────────────────────────────────────────────────────────────────
     txt_ventas, txt_pedidos, txt_alertas, txt_pendientes, txt_entregados, row_metricas, actualizar_metricas = build_metricas()
 
-    # ── Panel clientes ────────────────────────────────────────
     panel_clientes, refrescar_clientes = build_panel_clientes(
         page=page, run_db=run_db, models=models, crud=crud
     )
 
-    # ── Modales ───────────────────────────────────────────────
     modal_suministro, abrir_suministro = build_modal_suministro(
         page=page, run_db=run_db, crud=crud,
         refrescar_datos=lambda e=None: page.run_task(refrescar_datos),
@@ -70,7 +90,6 @@ async def main(page: ft.Page):
         modal_editar, modal_pedido,
     ])
 
-    # ── Interceptores de Hilo Seguros (FastAPI Async Patch) ──
     def safe_cargar_modal_editar(pedido_id):
         page.run_task(cargar_modal_editar, pedido_id)
 
@@ -80,7 +99,6 @@ async def main(page: ft.Page):
     def safe_abrir_eliminar(producto_id, producto_nombre):
         page.run_task(abrir_eliminar, producto_id, producto_nombre)
 
-    # ── Cambio de estado ──────────────────────────────────────
     async def cambiar_estado(pedido_id: int, nuevo_estado: str):
         await run_db(lambda db: crud.actualizar_estado_pedido(db, pedido_id, nuevo_estado))
         peds   = await run_db(lambda db: db.query(models.Pedido).all())
@@ -89,7 +107,6 @@ async def main(page: ft.Page):
         txt_pedidos.value = str(len(peds))
         await page.update_async()
 
-    # ── Lista de pedidos ──────────────────────────────────────
     async def construir_lista_pedidos(peds):
         lista_pedidos_ui.controls.clear()
         if not peds:
@@ -104,7 +121,6 @@ async def main(page: ft.Page):
                                      cargar_modal_editar=safe_cargar_modal_editar, page=page)
             )
 
-    # ── Filtro fecha ──────────────────────────────────────────
     async def aplicar_filtro(e=None):
         txt_error_fecha.value = ""
         desde = parsear_fecha(inp_fecha_inicio.value)
@@ -148,7 +164,6 @@ async def main(page: ft.Page):
         on_filtrar=aplicar_filtro, on_pdf=ejecutar_reporte_pdf, on_limpiar=limpiar_filtro,
     )
 
-    # ── Refresco principal ────────────────────────────────────
     async def refrescar_datos(e=None):
         nonlocal _todos_los_pedidos
         try:
@@ -168,7 +183,6 @@ async def main(page: ft.Page):
             
             criticos = [p for p in prods if (p.stock_actual or 0) <= (p.stock_minimo or 10)]
             
-            # ── 🛠️ UNIFICACIÓN LOGÍSTICA: Se removió "en ruta" para evitar duplicados ──
             pendientes = [p for p in peds_filtrados if p.estado_logistico in ("recibido", "en camino")]
             entregados = [p for p in peds_filtrados if p.estado_logistico == "entregado"]
             ventas     = sum(p.total_pedido for p in peds_filtrados if p.total_pedido)
@@ -211,7 +225,6 @@ async def main(page: ft.Page):
         if mostrar_login:
             await mostrar_login()
 
-    # ── CONTROL DE VISTAS ────────────────────────────────────────────────────────────────────
     tab_index = {"actual": 0}
     contenido_central = ft.Container(padding=ft.padding.all(20), expand=True)
 
@@ -227,7 +240,6 @@ async def main(page: ft.Page):
         return ft.Column([
             ft.Row([
                 ft.Text("Control de Inventario", size=22, weight="bold", color="white", expand=True),
-                # 🛠️ Corrección visual del doble más
                 ft.ElevatedButton(
                     "Nuevo Producto", bgcolor="#2e7d32", color="white", height=40,
                     icon=ft.icons.ADD,
@@ -260,8 +272,6 @@ async def main(page: ft.Page):
 
     async def cambiar_seccion(idx):
         tab_index["actual"] = idx
-        
-        # Sincronizar Sidebar (Desktop)
         for i, item in enumerate(sidebar_items.controls):
             if isinstance(item, ft.Container):
                 is_selected = i == idx
@@ -269,7 +279,6 @@ async def main(page: ft.Page):
                 item.content.controls[0].icon_color = "#2196f3" if is_selected else "grey"
                 item.content.controls[1].color = "white" if is_selected else "grey"
         
-        # Sincronizar Tabs (Mobile)
         for i, btn in enumerate(btn_tabs):
             btn.bgcolor = "#1a1f26" if i == idx else "#111416"
             btn.border = ft.border.all(1, "#2196f3" if i == idx else "#232629")
@@ -280,7 +289,6 @@ async def main(page: ft.Page):
     def handler_cambio_seccion(idx):
         return lambda e: page.run_task(cambiar_seccion, idx)
 
-    # ── CONSTRUCCIÓN DE COMPONENTES DE ENTORNO ───────────────────────────────────────────────
     sidebar_items = ft.Column(spacing=8)
     menu_opciones = [
         ("Pedidos Recientes", ft.icons.RECEIPT_LONG),
@@ -357,17 +365,10 @@ async def main(page: ft.Page):
         contenido_central
     ], spacing=0, expand=True)
 
-    # ── SISTEMA RESPONSIVO INTEGRADO ──
     layout_sistema = ft.ResponsiveRow(
         controls=[
-            ft.Container(
-                content=sidebar_panel,
-                col={"sm": 0, "md": 3, "lg": 2.5},
-            ),
-            ft.Container(
-                content=contenido_central,
-                col={"sm": 12, "md": 9, "lg": 9.5},
-            )
+            ft.Container(content=sidebar_panel, col={"sm": 0, "md": 3, "lg": 2.5}),
+            ft.Container(content=contenido_central, col={"sm": 12, "md": 9, "lg": 9.5})
         ],
         spacing=0
     )
@@ -422,6 +423,175 @@ async def main(page: ft.Page):
 
     actualizar_metricas(1200)
     actualizar_layout()
-
     await cambiar_seccion(0)
     await refrescar_datos()
+
+
+# ─────────────────────────────────────────────────────────────────────────────────────────
+# ── 🛒 INTERFAZ DEL CLIENTE (MODO: CATÁLOGO DIGITAL INTERACTIVO VIA WHATSAPP) ─────────────
+# ─────────────────────────────────────────────────────────────────────────────────────────
+async def cargar_interfaz_cliente(page: ft.Page, telefono: str):
+    page.scroll = ft.ScrollMode.ADAPTIVE
+    
+    # Lista reactiva que contendrá las tarjetas de licores optimizadas
+    grid_productos_ui = ft.Column(spacing=14, scroll=ft.ScrollMode.ADAPTIVE)
+    
+    # Diccionario en memoria de la pestaña del cliente para controlar las cantidades elegidas
+    # Llave: producto_id -> Valor: {nombre, cantidad, precio}
+    carrito_compra = {}
+
+    # Texto flotante inferior del botón que indica los licores sumados
+    txt_checkout = ft.Text("Tu carrito está vacío", color="white", size=14, weight="bold")
+    btn_checkout = ft.Container(
+        content=ft.Row([
+            ft.Icon(ft.icons.SHOPPING_BAG, color="white", size=20),
+            txt_checkout
+        ], alignment="center"),
+        bgcolor="#1e7e34", padding=14, border_radius=10,
+        visible=False,
+        on_click=lambda e: page.run_task(enviar_carrito_a_whatsapp)
+    )
+
+    async def enviar_carrito_a_whatsapp(e):
+        if not carrito_compra:
+            return
+        # Para mantener la simplicidad y acoplamiento con la estructura del bot, 
+        # tomamos el primer producto agregado del carrito para este MVP interactivo.
+        prod_id = list(carrito_compra.keys())[0]
+        item = carrito_compra[prod_id]
+        
+        # Formateamos la cadena de retorno idéntica a la que espera el interceptor de bot.py
+        mensaje_formateado = f"PEDIDO_WEB:ID={prod_id}|CANT={item['cantidad']}"
+        
+        # Enlace profundo hacia WhatsApp
+        url_whatsapp = f"https://wa.me/{NUMERO_BOT_WHATSAPP}?text={mensaje_formateado}"
+        await page.launch_url_async(url_whatsapp)
+
+    def actualizar_ui_checkout():
+        if not carrito_compra:
+            btn_checkout.visible = False
+        else:
+            prod_id = list(carrito_compra.keys())[0]
+            item = carrito_compra[prod_id]
+            txt_checkout.value = f"Pedir: {item['cantidad']} x {item['nombre']} (S/ {item['cantidad'] * item['precio']:.2f})"
+            btn_checkout.visible = True
+
+    def cambiar_cantidad(producto, delta):
+        p_id = producto.id
+        if p_id not in carrito_compra and delta > 0:
+            carrito_compra[p_id] = {
+                "nombre": producto.nombre,
+                "precio": float(producto.precio_venta or 0.0),
+                "cantidad": 0
+            }
+        
+        if p_id in carrito_compra:
+            # Reemplazamos carritos anteriores para asegurar una única compra directa limpia por WhatsApp
+            carrito_compra.clear()
+            carrito_compra[p_id] = {
+                "nombre": producto.nombre,
+                "precio": float(producto.precio_venta or 0.0),
+                "cantidad": max(1, delta)  # Fijamos la selección directa
+            }
+        
+        actualizar_ui_checkout()
+        page.update()
+
+    async def renderizar_catalogo_cliente(termino=""):
+        grid_productos_ui.controls.clear()
+        prods = await run_db(lambda db: db.query(models.Producto).filter(
+            ~models.Producto.nombre.startswith("[DESCONTINUADO]")
+        ).all())
+        
+        # Filtro reactivo en base al cuadro de búsqueda express
+        if termino:
+            prods = [p for p in prods if termino in p.nombre.lower()]
+
+        if not prods:
+            grid_productos_ui.controls.append(
+                ft.Container(
+                    content=ft.Text("No se encontraron licores con ese nombre.", color="grey", italic=True),
+                    padding=20, alignment=ft.alignment.center
+                )
+            )
+            await page.update_async()
+            return
+
+        for p in prods:
+            precio = float(p.precio_venta or 0.0)
+            tarjeta_licor = ft.Container(
+                content=ft.Row([
+                    ft.Container(
+                        content=ft.Icon(ft.icons.LOCAL_DRINK, color="#fbbf24", size=24),
+                        bgcolor="#1a1ffd" if (p.stock_actual or 0) > (p.stock_minimo or 10) else "#3a1010",
+                        padding=12, border_radius=8
+                    ),
+                    ft.Column([
+                        ft.Text(p.nombre, size=15, weight="bold", color="white", max_lines=1),
+                        ft.Text(f"S/ {precio:.2f}", size=14, color="#fbbf24", weight="w600"),
+                        ft.Text(f"Disponible en Chincha: {p.stock_actual} uds", size=11, color="grey")
+                    ], spacing=2, expand=True),
+                    ft.IconButton(
+                        icon=ft.icons.ADD_SHOPPING_CART,
+                        icon_color="white",
+                        bgcolor="#1565c0",
+                        icon_size=18,
+                        on_click=lambda e, prod=p: cambiar_cantidad(prod, 1)
+                    )
+                ], alignment="spaceBetween"),
+                padding=14,
+                bgcolor="#0f1214",
+                border_radius=12,
+                border=ft.border.all(1, "#1a1d20")
+            )
+            grid_productos_ui.controls.append(tarjeta_licor)
+        await page.update_async()
+
+    async def buscar_licor_cliente(e):
+        await renderizar_catalogo_cliente(e.control.value.lower())
+
+    # --- DISEÑO UI EXCLUSIVO PARA SMARTPHONES DE CLIENTES ---
+    header_cliente = ft.Container(
+        padding=ft.padding.symmetric(horizontal=16, vertical=16),
+        bgcolor="#0f1214",
+        border=ft.Border(bottom=ft.BorderSide(1, "#1a1d20")),
+        content=ft.Column([
+            ft.Row([
+                ft.Column([
+                    ft.Text("Smart-Liquor Express 🍾", size=18, weight="bold", color="white"),
+                    ft.Text("Delivery rápido directo a tu casa", color="grey", size=11),
+                ]),
+                ft.Container(
+                    content=ft.Text("CHINCHA", color="#a7f3d0", size=10, weight="bold"),
+                    bgcolor="#0b2a1a", padding=6, border_radius=6, border=ft.border.all(1, "#14532d")
+                )
+            ], alignment="spaceBetween"),
+            ft.Container(height=6),
+            ft.TextField(
+                hint_text="¿Qué te provoca tomar hoy? Buscar...",
+                on_change=buscar_licor_cliente,
+                border_color="#232629",
+                border_radius=10, height=42,
+                text_size=13, content_padding=10,
+                prefix_icon=ft.icons.SEARCH,
+                bgcolor="#111416"
+            )
+        ])
+    )
+
+    page.controls.clear()
+    page.controls.extend([
+        header_cliente,
+        ft.Container(
+            content=grid_productos_ui,
+            padding=16,
+            expand=True
+        ),
+        ft.Container(
+            content=btn_checkout,
+            padding=16,
+            bgcolor="#0b0d0f"
+        )
+    ])
+    
+    await renderizar_catalogo_cliente()
