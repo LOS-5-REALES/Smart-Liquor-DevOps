@@ -36,7 +36,7 @@ def health_check():
     responses={
         200: {
             "description": "Respuesta en formato TwiML (XML) para que Twilio la envíe al usuario.",
-            "content": {"application/xml": {"example": "<Response><Message>Hola Mundo</Message></Response>"}}
+            "content": {"text/xml": {"example": "<Response><Message>Hola Mundo</Message></Response>"}}
         }
     }
 )
@@ -50,15 +50,7 @@ async def whatsapp_webhook(
     1. Recibe el mensaje entrante del usuario y su número telefónico original.
     2. Realiza un parsing/limpieza del número para extraer los datos reales puros de 9 dígitos.
     3. Lo pasa al motor lógico indexando el estado de forma multiusuario.
-    4. Devuelve las instrucciones de respuesta en formato XML (TwiML).
-
-    Args:
-        Body (str): El contenido de texto del mensaje de WhatsApp extraído del formulario.
-        From (str): Identificador único del remitente proveído por Twilio.
-
-    Returns:
-        Response: Respuesta HTTP con encabezado `application/xml` conteniendo
-                  las instrucciones TwiML para Twilio.
+    4. Devuelve las instrucciones de respuesta en formato XML compatible con Twilio (text/xml).
     """
     print(f"[WHATSAPP ORIGINAL] De: {From} | Mensaje: {Body}")
     
@@ -76,7 +68,8 @@ async def whatsapp_webhook(
     # 💥 CONEXIÓN INTEGRAL: Pasamos el teléfono real depurado a la base de datos
     respuesta_xml = procesar_mensaje(Body, telefono=telefono_limpio)
     
-    return Response(content=respuesta_xml, media_type="application/xml")
+    # 🚨 CAMBIO CRÍTICO AQUÍ: Cambiamos a media_type="text/xml" para que Twilio lea el XML correctamente
+    return Response(content=respuesta_xml, media_type="text/xml")
 
 
 if __name__ == "__main__":
