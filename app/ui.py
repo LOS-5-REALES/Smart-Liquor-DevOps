@@ -22,7 +22,8 @@ from componentes import (
 )
 
 # Configuración del Número del Bot para el redireccionamiento (Formato Internacional sin el +)
-NUMERO_BOT_WHATSAPP = "51977860423"  
+# Actualizado con el número real de tu Sandbox de Twilio
+NUMERO_BOT_WHATSAPP = "14155238886"  
 
 async def run_db(fn):
     def _execute():
@@ -38,21 +39,30 @@ async def main(page: ft.Page):
     page.padding    = 0
     page.scroll     = ft.ScrollMode.ADAPTIVE
 
-    # ── 🔍 DETECCIÓN DE PARÁMETROS EN LA URL (MODO CLIENTE) ──
-    # Flet expone los parámetros de la URL a través de page.route
-    url_params = {}
-    if "?" in page.route:
-        raw_params = page.route.split("?")[1]
-        for param in raw_params.split("&"):
-            if "=" in param:
-                k, v = param.split("=")
-                url_params[k] = v
+    # ── 🔍 DETECCIÓN NATIVA Y ROBUSTA DE PARÁMETROS EN LA URL (MODO CLIENTE) ──
+    # Usamos page.query para entornos web estables en producción (Azure / Ngrok)
+    telefono_cliente = None
+    
+    if page.query:
+        telefono_cliente = page.query.get("telefono")
+    
+    # Contingencia por si las rutas vienen crudas en el page.route string
+    if not telefono_cliente and "?" in str(page.route):
+        try:
+            raw_params = str(page.route).split("?")[1]
+            for param in raw_params.split("&"):
+                if "=" in param:
+                    k, v = param.split("=")
+                    if k == "telefono":
+                        telefono_cliente = v
+        except Exception:
+            pass
 
-    telefono_cliente = url_params.get("telefono", None)
     es_modo_cliente = telefono_cliente is not None
 
     # Si es un cliente real desde WhatsApp, cargamos la experiencia del Catálogo Digital Interactivo
     if es_modo_cliente:
+        print(f"[LOG CONTROL] Modo Cliente Detectado Exitosamente para: {telefono_cliente}")
         await cargar_interfaz_cliente(page, telefono_cliente)
         return
 
@@ -437,7 +447,6 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str):
     grid_productos_ui = ft.Column(spacing=14, scroll=ft.ScrollMode.ADAPTIVE)
     
     # Diccionario en memoria de la pestaña del cliente para controlar las cantidades elegidas
-    # Llave: producto_id -> Valor: {nombre, cantidad, precio}
     carrito_compra = {}
 
     # Texto flotante inferior del botón que indica los licores sumados
@@ -455,15 +464,13 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str):
     async def enviar_carrito_a_whatsapp(e):
         if not carrito_compra:
             return
-        # Para mantener la simplicidad y acoplamiento con la estructura del bot, 
-        # tomamos el primer producto agregado del carrito para este MVP interactivo.
         prod_id = list(carrito_compra.keys())[0]
         item = carrito_compra[prod_id]
         
         # Formateamos la cadena de retorno idéntica a la que espera el interceptor de bot.py
         mensaje_formateado = f"PEDIDO_WEB:ID={prod_id}|CANT={item['cantidad']}"
         
-        # Enlace profundo hacia WhatsApp
+        # Enlace profundo hacia WhatsApp apuntando de forma fija al Sandbox de Twilio
         url_whatsapp = f"https://wa.me/{NUMERO_BOT_WHATSAPP}?text={mensaje_formateado}"
         await page.launch_url_async(url_whatsapp)
 
@@ -486,66 +493,76 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str):
             }
         
         if p_id in carrito_compra:
-            # Reemplazamos carritos anteriores para asegurar una única compra directa limpia por WhatsApp
             carrito_compra.clear()
             carrito_compra[p_id] = {
                 "nombre": producto.nombre,
                 "precio": float(producto.precio_venta or 0.0),
-                "cantidad": max(1, delta)  # Fijamos la selección directa
+                "cantidad": max(1, delta)
             }
         
         actualizar_ui_checkout()
         page.update()
 
     async def renderizar_catalogo_cliente(termino=""):
-        grid_productos_ui.controls.clear()
-        prods = await run_db(lambda db: db.query(models.Producto).filter(
-            ~models.Producto.nombre.startswith("[DESCONTINUADO]")
-        ).all())
-        
-        # Filtro reactivo en base al cuadro de búsqueda express
-        if termino:
-            prods = [p for p in prods if termino in p.nombre.lower()]
+        try:
+            grid_productos_ui.controls.clear()
+            prods = await run_db(lambda db: db.query(models.Producto).filter(
+                ~models.Producto.nombre.startswith("[DESCONTINUADO]")
+            ).all())
+            
+            if termino:
+                prods = [p for p in prods if termino in p.nombre.lower()]
 
-        if not prods:
+            if not prods:
+                grid_productos_ui.controls.append(
+                    ft.Container(
+                        content=ft.Text("No se encontraron licores con ese nombre.", color="grey", italic=True),
+                        padding=20, alignment=ft.alignment.center
+                    )
+                )
+                await page.update_async()
+                return
+
+            for p in prods:
+                precio = float(p.precio_venta or 0.0)
+                tarjeta_licor = ft.Container(
+                    content=ft.Row([
+                        ft.Container(
+                            content=ft.Icon(ft.icons.LOCAL_DRINK, color="#fbbf24", size=24),
+                            bgcolor="#1c2430" if (p.stock_actual or 0) > (p.stock_minimo or 10) else "#3a1010",
+                            padding=12, border_radius=8
+                        ),
+                        ft.Column([
+                            ft.Text(p.nombre, size=15, weight="bold", color="white", max_lines=1),
+                            ft.Text(f"S/ {precio:.2f}", size=14, color="#fbbf24", weight="w600"),
+                            ft.Text(f"Disponible en Chincha: {p.stock_actual} uds", size=11, color="grey")
+                        ], spacing=2, expand=True),
+                        ft.IconButton(
+                            icon=ft.icons.ADD_SHOPPING_CART,
+                            icon_color="white",
+                            bgcolor="#1565c0",
+                            icon_size=18,
+                            on_click=lambda e, prod=p: cambiar_cantidad(prod, 1)
+                        )
+                    ], alignment="spaceBetween"),
+                    padding=14,
+                    bgcolor="#0f1214",
+                    border_radius=12,
+                    border=ft.border.all(1, "#1a1d20")
+                )
+                grid_productos_ui.controls.append(tarjeta_licor)
+            await page.update_async()
+            
+        except Exception as err:
+            # CAPTURA DE SEGURIDAD: Muestra el error exacto en la pantalla móvil si la BD falla
+            grid_productos_ui.controls.clear()
             grid_productos_ui.controls.append(
                 ft.Container(
-                    content=ft.Text("No se encontraron licores con ese nombre.", color="grey", italic=True),
-                    padding=20, alignment=ft.alignment.center
+                    content=ft.Text(f"⚠️ Error al conectar con el inventario: {str(err)}", color="red_accent", size=14),
+                    padding=20, bgcolor="#2a1010", border_radius=8
                 )
             )
             await page.update_async()
-            return
-
-        for p in prods:
-            precio = float(p.precio_venta or 0.0)
-            tarjeta_licor = ft.Container(
-                content=ft.Row([
-                    ft.Container(
-                        content=ft.Icon(ft.icons.LOCAL_DRINK, color="#fbbf24", size=24),
-                        bgcolor="#1a1ffd" if (p.stock_actual or 0) > (p.stock_minimo or 10) else "#3a1010",
-                        padding=12, border_radius=8
-                    ),
-                    ft.Column([
-                        ft.Text(p.nombre, size=15, weight="bold", color="white", max_lines=1),
-                        ft.Text(f"S/ {precio:.2f}", size=14, color="#fbbf24", weight="w600"),
-                        ft.Text(f"Disponible en Chincha: {p.stock_actual} uds", size=11, color="grey")
-                    ], spacing=2, expand=True),
-                    ft.IconButton(
-                        icon=ft.icons.ADD_SHOPPING_CART,
-                        icon_color="white",
-                        bgcolor="#1565c0",
-                        icon_size=18,
-                        on_click=lambda e, prod=p: cambiar_cantidad(prod, 1)
-                    )
-                ], alignment="spaceBetween"),
-                padding=14,
-                bgcolor="#0f1214",
-                border_radius=12,
-                border=ft.border.all(1, "#1a1d20")
-            )
-            grid_productos_ui.controls.append(tarjeta_licor)
-        await page.update_async()
 
     async def buscar_licor_cliente(e):
         await renderizar_catalogo_cliente(e.control.value.lower())
