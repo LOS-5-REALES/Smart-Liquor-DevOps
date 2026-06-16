@@ -92,9 +92,13 @@ def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
             db.commit()  # Confirmación síncrona en base de datos
             print(f"[REGISTRO EXITOSO] Cliente {telefono} guardado correctamente en Supabase.")
             
-            # Inicializamos y limpiamos el estado de la memoria para evitar que el bot se quede mudo
-            if telefono in sesiones:
-                sesiones[telefono]["paso"] = "eligiendo_producto"
+            # Sincronizamos el diccionario de memoria global conservando la estructura limpia
+            if telefono not in sesiones:
+                sesiones[telefono] = {}
+            
+            sesiones[telefono].update({
+                "paso": "eligiendo_producto"
+            })
                 
             return True
 
@@ -117,7 +121,7 @@ def registrar_pedido(telefono: str, producto_id: int, cantidad: int) -> tuple[bo
                 return False, "Producto no encontrado."
                 
             if (producto.stock_actual or 0) < cantidad:
-                return False, f"Solo hay {producto.stock_actual} unidades."
+                return False, f"Solo hay {producto.stock_actual} units."
 
             producto.stock_actual -= cantidad
             if producto.stock_actual <= (producto.stock_minimo or 10):
@@ -196,6 +200,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     msg.body(texto)
             except Exception:
                 msg.body("😔 Error al cargar catálogo.")
+            return str(response)
 
         elif mensaje == "2":
             if not verificar_registro_cliente(telefono):
@@ -208,20 +213,22 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     "📍 *Dirección:* Calle, Número o Distrito\n"
                     "📍 *Referencia:* Color de fachada, negocio cercano, etc.\n\n"
                     "💡 *Ejemplo rápido:*\n"
-                    "Nombre: Jesús Loza Yataco\n"
-                    "Dirección: Av Emancipación 345, Sunampe\n"
-                    "Referencia: Al costado de una antena"
+                    "Nombre: Carlos Mendoza Ramos\n"
+                    "Dirección: Jr. Melchorita 124, Grocio Prado\n"
+                    "Referencia: Frente a la plaza principal, portón marrón"
                 )
             else:
                 ir_a_seleccion_productos(msg, sesion)
+            return str(response)
         else:
             msg.body("🤔 Opción no válida.\n\n" + menu_principal())
+            return str(response)
 
     # ── PASO: CAPTURA Y VALIDACIÓN DEL REGISTRO ────────────────
     elif paso == "esperando_registro_unico":
         exito = registrar_cliente_completo(telefono, mensaje)
         if exito:
-            ir_a_seleccion_productos(msg, sesion)
+            ir_a_seleccion_productos(msg, sesiones[telefono])
         else:
             msg.body(
                 "⚠️ *No pudimos procesar tus datos.*\n\n"
@@ -230,6 +237,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                 "👉 *Dirección:* Tu Dirección\n"
                 "👉 *Referencia:* Tu Referencia"
             )
+        return str(response)
 
     # ── PASO: SELECCIÓN DE PRODUCTO ────────────────────────────
     elif paso == "eligiendo_producto":
@@ -253,6 +261,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                 msg.body(f"⚠️ Selecciona una opción válida entre 1 y {len(productos)}.")
         except ValueError:
             msg.body("⚠️ Envía solo el número de la opción.")
+        return str(response)
 
     # ── PASO: SELECCIÓN DE CANTIDAD ────────────────────────────
     elif paso == "eligiendo_cantidad":
@@ -277,6 +286,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             )
         except ValueError:
             msg.body("⚠️ Por favor escribe un número entero válido (ej: 2):")
+        return str(response)
 
     # ── PASO: CONFIRMACIÓN DEL PEDIDO ─────────────────────────
     elif paso == "confirmando":
@@ -297,6 +307,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             msg.body("❌ Pedido cancelado.\n\n" + menu_principal())
         else:
             msg.body("👉 Responde *SI* para confirmar o *NO* para anular.")
+        return str(response)
 
     return str(response)
 
@@ -319,7 +330,9 @@ def ir_a_seleccion_productos(msg, sesion):
             texto += "\n👉 Responde con el *número* del producto para agregarlo a tu carrito:"
             
             sesion["paso"] = "eligiendo_producto"
-            sesion["productos"] = [(p.id, p.nombre, p.precio_venta) for p in productos]
+            sesion["productos"] = [(int(p.id), str(p.nombre), float(p.precio_venta)) for p in productos]
             msg.body(texto)
-    except Exception:
+    except Exception as e:
+        print(f"[ERROR EN ir_a_seleccion_productos]: {e}")
+        traceback.print_exc()
         msg.body("😔 Error al desplegar licores.")
