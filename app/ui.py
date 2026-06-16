@@ -21,7 +21,7 @@ from componentes import (
     build_modal_pedido,
 )
 
-# CORREGIDO: Configuración del Número del Bot Real de tu Negocio (Formato Internacional sin el +)
+# Configuración del Número del Bot Real de tu Negocio (Formato Internacional sin el +)
 NUMERO_BOT_WHATSAPP = "51977860423"  
 
 async def run_db(fn):
@@ -38,15 +38,27 @@ async def main(page: ft.Page):
     page.padding    = 0
     page.scroll     = ft.ScrollMode.ADAPTIVE
 
-    # ── 🔍 DETECCIÓN DESDE LA SESIÓN COMPARTIDA POR MAIN ──
-    telefono_cliente = page.session.get("telefono_cliente_whatsapp")
-    modo_catalogo = page.session.get("modo_catalogo") or "ver"
-    es_modo_cliente = telefono_cliente is not None
+    # ── 🔍 BLINDAJE EXTREMO DE EXTRACCIÓN DE SESIÓN (ANTI-PANTALLA ROJA) ──
+    try:
+        # Usamos .get() con fallbacks vacíos para evitar 'KeyError' bajo cualquier circunstancia
+        telefono_cliente = page.session.get("telefono_cliente_whatsapp") if page.session else None
+        modo_catalogo = page.session.get("modo_catalogo") if page.session else "ver"
+        
+        # Fallback de emergencia directa desde los query strings de la URL si la sesión falló
+        if not telefono_cliente and page.query:
+            telefono_cliente = page.query.get("telefono")
+            modo_catalogo = page.query.get("modo", "ver")
+    except Exception as e:
+        print(f"[UI SESSION WARNING] Error leyendo sesión base, usando valores vacíos: {e}")
+        telefono_cliente = None
+        modo_catalogo = "ver"
+
+    es_modo_cliente = telefono_cliente is not None and str(telefono_cliente).strip() != ""
 
     # Si es un cliente real desde WhatsApp, cargamos la experiencia del Catálogo
     if es_modo_cliente:
         print(f"[LOG CONTROL] Modo Cliente Activo para: {telefono_cliente} | Enfoque: {modo_catalogo}")
-        await cargar_interfaz_cliente(page, telefono_cliente, modo_catalogo)
+        await cargar_interfaz_cliente(page, str(telefono_cliente), str(modo_catalogo))
         return
 
     # ─────────────────────────────────────────────────────────────────────────────────────────
@@ -214,7 +226,7 @@ async def main(page: ft.Page):
             logout()
         except Exception:
             pass
-        mostrar_login = page.session.get("mostrar_login")
+        mostrar_login = page.session.get("mostrar_login") if page.session else None
         if mostrar_login:
             await mostrar_login()
 
@@ -431,7 +443,6 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
     txt_checkout = ft.Text("Tu carrito está vacío", color="white", size=14, weight="bold")
     btn_checkout_container = ft.Container(visible=False)
 
-    # CORREGIDO: Evento asíncrono puro nativo para romper bloqueos de pop-ups en celulares
     async def enviar_carrito_a_whatsapp(e):
         if not carrito_compra:
             return
@@ -595,7 +606,6 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
         ])
     )
 
-    # CORREGIDO: Cambiado on_click para llamarse asíncronamente directo
     btn_checkout_container.content = ft.Container(
         content=ft.Row([
             ft.Icon(ft.icons.SHOPPING_BAG, color="white", size=18),
