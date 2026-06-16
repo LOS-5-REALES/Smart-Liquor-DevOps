@@ -530,7 +530,8 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
                             padding=10, border_radius=8
                         ),
                         ft.Column([
-                            ft.Text(p.nombre, size=14, weight="bold", color="white", max_lines=1, overflow=ft.TextOverflow.ELIPSIS),
+                            # CORREGIDO: Propiedad nativa exacta de truncado con doble L (ELLIPSIS)
+                            ft.Text(p.nombre, size=14, weight="bold", color="white", max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
                             ft.Text(f"S/ {precio:.2f}", size=13, color="#fbbf24", weight="w600"),
                             ft.Text(f"Disponibles: {p.stock_actual} uds", size=10, color="grey")
                         ], spacing=1, expand=True),
