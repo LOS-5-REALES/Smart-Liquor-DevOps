@@ -132,8 +132,6 @@ def registrar_pedido(telefono: str, producto_id: int, cantidad: int) -> tuple[bo
             db.add(nuevo_pedido)
             db.flush()
 
-            # IMPORTANTE: Asegúrate de que en tu archivo models.py, este modelo 
-            # apunte a la tabla 'detalle_pedidos' (singular según tu script SQL)
             detalle = models.DetallePedido(
                 pedido_id=nuevo_pedido.id,
                 producto_id=producto_id,
@@ -215,7 +213,9 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     "Referencia: Frente a la plaza principal, portón marrón"
                 )
             else:
-                ir_a_seleccion_productos(msg, sesion)
+                # 🚨 MODIFICACIÓN: Pasamos el mensaje construido directamente al cuerpo de la respuesta TwiML
+                texto_cat = ir_a_seleccion_productos(sesion)
+                msg.body(texto_cat)
             return str(response)
         else:
             msg.body("🤔 Opción no válida.\n\n" + menu_principal())
@@ -225,8 +225,9 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
     elif paso == "esperando_registro_unico":
         exito = registrar_cliente_completo(telefono, mensaje)
         if exito:
-            sesion["paso"] = "eligiendo_producto"
-            ir_a_seleccion_productos(msg, sesion)
+            # 🚨 MODIFICACIÓN INTEGRAL: Obtenemos el texto del catálogo y lo asignamos al Body de manera limpia
+            texto_cat = ir_a_seleccion_productos(sesion)
+            msg.body(texto_cat)
         else:
             msg.body(
                 "⚠️ *No pudimos procesar tus datos.*\n\n"
@@ -310,29 +311,30 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
     return str(response)
 
 
-def ir_a_seleccion_productos(msg, sesion):
-    """Muestra el catálogo y cambia el estado para recibir la elección del licor."""
+def ir_a_seleccion_productos(sesion) -> str:
+    """Construye el catálogo y muta el estado de sesión regresando el string formateado."""
     try:
         productos = obtener_catalogo()
         if not productos:
-            msg.body("😔 No hay licores disponibles en este instante.")
-        else:
-            texto = (
-                "✅ *¡Datos guardados con éxito!* 🎉\n"
-                "Ya quedaste registrado en nuestro sistema.\n\n"
-                "🛒 *¿Qué deseas pedir hoy?*\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-            )
-            for i, p in enumerate(productos, 1):
-                # Sincronizado nativamente con double precision (float)
-                precio = float(p.precio_venta or 0.0)
-                texto += f"{i}. {p.nombre} — S/ {precio:.2f}\n"
-            texto += "\n👉 Responde con el *número* del producto para agregarlo a tu carrito:"
-            
-            sesion["paso"] = "eligiendo_producto"
-            sesion["productos"] = [(int(p.id), str(p.nombre), float(p.precio_venta or 0.0)) for p in productos]
-            msg.body(texto)
+            return "😔 No hay licores disponibles en este instante."
+        
+        texto = (
+            "✅ *¡Datos guardados con éxito!* 🎉\n"
+            "Ya quedaste registrado en nuestro sistema.\n\n"
+            "🛒 *¿Qué deseas pedir hoy?*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+        )
+        for i, p in enumerate(productos, 1):
+            precio = float(p.precio_venta or 0.0)
+            texto += f"{i}. {p.nombre} — S/ {precio:.2f}\n"
+        texto += "\n👉 Responde con el *número* del producto para agregarlo a tu carrito:"
+        
+        # Seteamos los estados de la sesión de forma limpia
+        sesion["paso"] = "eligiendo_producto"
+        sesion["productos"] = [(int(p.id), str(p.nombre), float(p.precio_venta or 0.0)) for p in productos]
+        
+        return texto
     except Exception as e:
         print(f"[ERROR EN ir_a_seleccion_productos]: {e}")
         traceback.print_exc()
-        msg.body("😔 Error al desplegar licores.")
+        return "😔 Tuvimos un inconveniente al cargar el catálogo de licores. Por favor escribe *MENU*."
