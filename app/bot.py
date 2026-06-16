@@ -91,14 +91,6 @@ def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
             
             db.commit()  # Confirmación síncrona en base de datos
             print(f"[REGISTRO EXITOSO] Cliente {telefono} guardado correctamente en Supabase.")
-            
-            # Sincronizamos el diccionario de memoria global conservando la estructura limpia
-            if telefono not in sesiones:
-                sesiones[telefono] = {}
-            
-            sesiones[telefono].update({
-                "paso": "eligiendo_producto"
-            })
                 
             return True
 
@@ -228,7 +220,9 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
     elif paso == "esperando_registro_unico":
         exito = registrar_cliente_completo(telefono, mensaje)
         if exito:
-            ir_a_seleccion_productos(msg, sesiones[telefono])
+            # Forzamos la asignación de paso sobre la variable local controlada por el scope principal
+            sesion["paso"] = "eligiendo_producto"
+            ir_a_seleccion_productos(msg, sesion)
         else:
             msg.body(
                 "⚠️ *No pudimos procesar tus datos.*\n\n"
