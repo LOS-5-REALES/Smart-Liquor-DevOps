@@ -73,7 +73,7 @@ def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
         print(f"[LOG PARSED SUCCESS] Nombre: '{nombre}' | Dirección: '{direccion}' | Referencia: '{referencia}'")
 
         if not nombre or not direccion or not referencia:
-            print("[REGISTRO FALLIDO] Datos incompletom tras la segmentación por texto.")
+            print("[REGISTRO FALLIDO] Datos incompletos tras la segmentación por texto.")
             return False
 
         with Session(engine) as db:
@@ -146,7 +146,7 @@ def menu_principal() -> str:
         "👋 *¡Bienvenido a Smart-Liquor!* 🍷\n"
         "Tu distribuidora de confianza en Chincha.\n\n"
         "¿Qué te provoca llevar hoy?\n\n"
-        "1️⃣ Abrir nuestro Catálogo Digital ✨\n"
+        "1️⃣ Abrir nuestro Catálogo Digital (Solo ver) ✨\n"
         "2️⃣ Iniciar un pedido nuevo 🛒\n"
         "3️⃣ Cobertura y Delivery 🚚\n"
         "4️⃣ Cuentas y Métodos de pago 💳\n\n"
@@ -216,7 +216,13 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
 
     # ── PASO: MENÚ PRINCIPAL ───────────────────────────────────
     if paso == "menu":
-        if mensaje in ["1", "2"]:
+        # 1️⃣ OPCIÓN 1: SOLO VER EL CATÁLOGO (Sin restricciones de registro)
+        if mensaje == "1":
+            msg.body(generar_enlace_catalogo(telefono_limpio, modo="ver"))
+            return str(response)
+        
+        # 2️⃣ OPCIÓN 2: INICIAR UN PEDIDO NUEVO (Validación obligatoria)
+        elif mensaje == "2":
             if not verificar_registro_cliente(telefono_limpio):
                 sesion["paso"] = "esperando_registro_unico"
                 msg.body(
@@ -232,17 +238,18 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     "Referencia: Frente a la plaza principal, portón marrón"
                 )
             else:
-                msg.body(generar_enlace_catalogo(telefono_limpio))
+                msg.body(generar_enlace_catalogo(telefono_limpio, modo="pedido"))
             return str(response)
+        
         else:
             msg.body("🤔 Opción no válida.\n\n" + menu_principal())
             return str(response)
 
-    # ── PASO: CAPTURA Y VALIDACIÓN DEL REGISTRO ────────────────
+    # ── PASO: CAPTURA Y VALIDACIÓN DEL REGISTRO (SOLO ENTRADA DESDE OPCIÓN 2) ──
     elif paso == "esperando_registro_unico":
         exito = registrar_cliente_completo(telefono_limpio, mensaje)
         if exito:
-            msg.body(generar_enlace_catalogo(telefono_limpio))
+            msg.body(generar_enlace_catalogo(telefono_limpio, modo="pedido"))
         else:
             msg.body(
                 "⚠️ *No pudimos procesar tus datos.*\n\n"
@@ -277,30 +284,35 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
     return str(response)
 
 
-def generar_enlace_catalogo(telefono: str) -> str:
-    """Construye la respuesta interactiva con el enlace dinámico y limpio hacia la web app."""
-    # Extraer el nombre real de la base de datos para no decir siempre "Carlos"
+def generar_enlace_catalogo(telefono: str, modo: str = "ver") -> str:
+    """Construye la respuesta interactiva con el enlace dinámico y limpio según el modo."""
     nombre_cliente = "Cliente"
     try:
         with Session(engine) as db:
             cliente = db.query(models.Cliente).filter(models.Cliente.telefono == telefono).first()
-            if cliente and cliente.nombre_completo:
-                nombre_cliente = cliente.nombre_completo.split()[0]  # Tomamos solo el primer nombre
+            if cliente and cliente.nombre_completo and cliente.nombre_completo != "Cliente WhatsApp":
+                nombre_cliente = cliente.nombre_completo.split()[0]
     except Exception:
         pass
 
-    # Formateo estricto del hipervínculo
-    url_inteligente = f"{BASE_URL_WEB}/?telefono={telefono}"
+    # Inyección matemática del modo en el parámetro query string para que Flet lo interprete
+    url_inteligente = f"{BASE_URL_WEB}/?telefono={telefono}&modo={modo}"
     
-    # Seteamos el estado de espera
-    sesiones[telefono] = {"paso": "esperando_carrito_web"}
-    
-    # Devolvemos la plantilla limpia aislando el link de caracteres especiales que rompan el parseo de WhatsApp
-    return (
-        f"🛒 *¡HOLA {nombre_cliente.upper()}! AQUÍ TIENES TU CATÁLOGO* 🍷\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Hemos abierto nuestro inventario completo con stock en tiempo real en Chincha. "
-        "Arma tu carrito de forma rápida haciendo clic directamente aquí:\n\n"
-        f"{url_inteligente}\n\n"
-        "💡 Elige tus productos en la web y al darle a 'Confirmar', regresarás aquí automáticamente."
-    )
+    if modo == "pedido":
+        sesiones[telefono] = {"paso": "esperando_carrito_web"}
+        return (
+            f"🛒 *¡HOLA {nombre_cliente.upper()}! ARMEMOS TU PEDIDO* 🍷\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Elige tus productos, ajusta las cantidades en el carrito interactivo y presiona confirmar abajo:\n\n"
+            f"{url_inteligente}\n\n"
+            "💡 Al darle a 'Confirmar Pedido', regresarás aquí automáticamente para agendar tu entrega rápida."
+        )
+    else:
+        # Modo Lectura: No muta el paso de la conversación, el cliente puede seguir navegando el menú
+        return (
+            f"✨ *¡HOLA {nombre_cliente.upper()}! AQUÍ TIENES EL INVENTARIO* 🍾\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Explora nuestros más de 130 licores y precios actuales disponibles para entrega en Chincha haciendo clic aquí:\n\n"
+            f"{url_inteligente}\n\n"
+            "💡 Nota: Este enlace es exclusivamente de modo lectura. Para comprar, selecciona la opción 2 en el menú principal."
+        )

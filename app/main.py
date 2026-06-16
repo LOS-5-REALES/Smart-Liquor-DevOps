@@ -27,23 +27,9 @@ async def app_con_login(page: ft.Page):
     page.title      = "Smart-Liquor DevOps"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor    = "#0b0d0f"
-
-    # ── 🔍 EXTRACCIÓN BLINDADA Y SEGURA DEL TELÉFONO ──
-    telefono_cliente = None
     
-    # Método 1: Intentar leer de page.query de forma segura usando getattr por si viene vacío o None
-    try:
-        query_obj = getattr(page, "query", None)
-        if query_obj and hasattr(query_obj, "get"):
-            telefono_cliente = query_obj.get("telefono")
-    except Exception:
-        pass
-    
-    # Método 2 (El más estable en flet_fastapi): Analizar el string de la ruta cruda con RegEx
-    if not telefono_cliente and page.route:
-        match = re.search(r"telefono=([0-9]+)", str(page.route))
-        if match:
-            telefono_cliente = match.group(1)
+    # Configuración base responsive para asegurar renderizado correcto en celulares
+    page.padding = 0
 
     async def mostrar_login():
         from componentes.login_screen import build_login_screen
@@ -60,6 +46,9 @@ async def app_con_login(page: ft.Page):
             await page.clean_async()
             page.padding = 25
             page.session.set("mostrar_login", mostrar_login)
+            # Limpiamos estados de cliente al entrar al panel administrativo
+            page.session.set("telefono_cliente_whatsapp", None)
+            page.session.set("modo_catalogo", "admin")
             await build_dashboard(page)
             print(">>> Dashboard cargado OK")
         except Exception as ex:
@@ -67,20 +56,49 @@ async def app_con_login(page: ft.Page):
             import traceback
             traceback.print_exc()
 
-    # 🚨 CONTROL FLUJO MAESTRO INTERACTIVO
-    if telefono_cliente:
-        print(f"[MAIN CONTROL] Redirección Directa al Catálogo sin Login para: {telefono_cliente}")
-        from ui import main as build_dashboard
-        
-        # Guardamos el teléfono en la sesión para que ui.py lo lea directamente de aquí sin recalcular la URL
-        page.session.set("telefono_cliente_whatsapp", telefono_cliente)
-        
-        await page.clean_async() 
-        page.padding = 0
-        await build_dashboard(page)
-    else:
-        print("[MAIN CONTROL] Acceso estándar. Cargando pantalla de Login administrativo.")
-        await mostrar_login()
+    async def evaluar_ruta_y_desplegar(route_event=None):
+        """
+        Manejador dinámico de rutas encargado de romper el bloqueo de pantalla negra
+        en navegadores de smartphones capturando query strings sobre eventos asíncronos.
+        """
+        url_contexto = str(page.route or "")
+        print(f"[FLET ROUTE DETECTED] Ruta cruda en navegación: {url_contexto}")
+
+        telefono_cliente = None
+        modo_catalogo = "ver"  # Por defecto modo lectura segura
+
+        # ── EXTRACCIÓN MAESTRA VÍA REGEX (Para entornos móviles embebidos) ──
+        match_tel = re.search(r"telefono=([0-9]+)", url_contexto)
+        if match_tel:
+            telefono_cliente = match_tel.group(1)
+
+        match_modo = re.search(r"modo=([a-zA-Z]+)", url_contexto)
+        if match_modo:
+            modo_catalogo = match_modo.group(1)
+
+        # ── CONTROL FLUJO MAESTRO INTERACTIVO ──
+        if telefono_cliente:
+            print(f"[MAIN CONTROL] Modo Catálogo Digital Cliente: {telefono_cliente} | Modo: {modo_catalogo}")
+            from ui import main as build_dashboard
+            
+            # Guardamos los parámetros limpios en la sesión segura de Flet
+            page.session.set("telefono_cliente_whatsapp", telefono_cliente)
+            page.session.set("modo_catalogo", modo_catalogo)
+            
+            await page.clean_async() 
+            page.padding = 0
+            await build_dashboard(page)
+        else:
+            # Si no hay teléfono en la URL, asumimos que es el administrador queriendo entrar al panel
+            print("[MAIN CONTROL] Acceso estándar sin parámetros. Cargando Login administrativo.")
+            page.session.set("modo_catalogo", "admin")
+            await mostrar_login()
+
+    # Vincular al escuchador de cambios de ruta nativo (Crucial para navegadores móviles)
+    page.on_route_change = evaluar_ruta_y_desplegar
+    
+    # Forzar la primera evaluación al levantar la vista
+    await evaluar_ruta_y_desplegar(None)
 
 
 app.mount("/", flet_fastapi.app(app_con_login))

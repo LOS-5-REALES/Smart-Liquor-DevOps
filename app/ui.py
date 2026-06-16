@@ -22,7 +22,6 @@ from componentes import (
 )
 
 # Configuración del Número del Bot para el redireccionamiento (Formato Internacional sin el +)
-# Actualizado con el número real de tu Sandbox de Twilio
 NUMERO_BOT_WHATSAPP = "14155238886"  
 
 async def run_db(fn):
@@ -40,14 +39,14 @@ async def main(page: ft.Page):
     page.scroll     = ft.ScrollMode.ADAPTIVE
 
     # ── 🔍 DETECCIÓN DESDE LA SESIÓN COMPARTIDA POR MAIN ──
-    # Leemos la variable segura que se validó e inyectó de forma limpia en app/main.py
     telefono_cliente = page.session.get("telefono_cliente_whatsapp")
+    modo_catalogo = page.session.get("modo_catalogo") or "ver"
     es_modo_cliente = telefono_cliente is not None
 
-    # Si es un cliente real desde WhatsApp, cargamos la experiencia del Catálogo Digital Interactivo
+    # Si es un cliente real desde WhatsApp, cargamos la experiencia del Catálogo
     if es_modo_cliente:
-        print(f"[LOG CONTROL] Modo Cliente Detectado Exitosamente para: {telefono_cliente}")
-        await cargar_interfaz_cliente(page, telefono_cliente)
+        print(f"[LOG CONTROL] Modo Cliente Activo para: {telefono_cliente} | Enfoque: {modo_catalogo}")
+        await cargar_interfaz_cliente(page, telefono_cliente, modo_catalogo)
         return
 
     # ─────────────────────────────────────────────────────────────────────────────────────────
@@ -354,11 +353,6 @@ async def main(page: ft.Page):
         contenido_central
     ], spacing=4, expand=True)
 
-    layout_desktop = ft.Row([
-        sidebar_panel,
-        contenido_central
-    ], spacing=0, expand=True)
-
     layout_sistema = ft.ResponsiveRow(
         controls=[
             ft.Container(content=sidebar_panel, col={"sm": 0, "md": 3, "lg": 2.5}),
@@ -424,26 +418,18 @@ async def main(page: ft.Page):
 # ─────────────────────────────────────────────────────────────────────────────────────────
 # ── 🛒 INTERFAZ DEL CLIENTE (MODO: CATÁLOGO DIGITAL INTERACTIVO VIA WHATSAPP) ─────────────
 # ─────────────────────────────────────────────────────────────────────────────────────────
-async def cargar_interfaz_cliente(page: ft.Page, telefono: str):
+async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver"):
     page.scroll = ft.ScrollMode.ADAPTIVE
     
-    # Lista reactiva que contendrá las tarjetas de licores optimizadas
+    # Contenedor asíncrono responsivo anti-pantallas negras
     grid_productos_ui = ft.Column(spacing=14, scroll=ft.ScrollMode.ADAPTIVE)
     
-    # Diccionario en memoria de la pestaña del cliente para controlar las cantidades elegidas
+    # Estado reactivo local del carrito
     carrito_compra = {}
 
-    # Texto flotante inferior del botón que indica los licores sumados
+    # Elementos inferiores del Checkout
     txt_checkout = ft.Text("Tu carrito está vacío", color="white", size=14, weight="bold")
-    btn_checkout = ft.Container(
-        content=ft.Row([
-            ft.Icon(ft.icons.SHOPPING_BAG, color="white", size=20),
-            txt_checkout
-        ], alignment="center"),
-        bgcolor="#1e7e34", padding=14, border_radius=10,
-        visible=False,
-        on_click=lambda e: page.run_task(enviar_carrito_a_whatsapp)
-    )
+    btn_checkout_container = ft.Container(visible=False)
 
     async def enviar_carrito_a_whatsapp(e):
         if not carrito_compra:
@@ -451,48 +437,56 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str):
         prod_id = list(carrito_compra.keys())[0]
         item = carrito_compra[prod_id]
         
-        # Formateamos la cadena de retorno idéntica a la que espera el interceptor de bot.py
+        # Formateamos la cadena interceptora esperada por bot.py
         mensaje_formateado = f"PEDIDO_WEB:ID={prod_id}|CANT={item['cantidad']}"
-        
-        # Enlace profundo hacia WhatsApp apuntando de forma fija al Sandbox de Twilio
         url_whatsapp = f"https://wa.me/{NUMERO_BOT_WHATSAPP}?text={mensaje_formateado}"
         await page.launch_url_async(url_whatsapp)
 
     def actualizar_ui_checkout():
-        if not carrito_compra:
-            btn_checkout.visible = False
+        # Si estamos en modo lectura, obligamos a que el panel inferior nunca se dibuje
+        if modo == "ver" or not carrito_compra:
+            btn_checkout_container.visible = False
         else:
             prod_id = list(carrito_compra.keys())[0]
             item = carrito_compra[prod_id]
-            txt_checkout.value = f"Pedir: {item['cantidad']} x {item['nombre']} (S/ {item['cantidad'] * item['precio']:.2f})"
-            btn_checkout.visible = True
-
-    def cambiar_cantidad(producto, delta):
-        p_id = producto.id
-        if p_id not in carrito_compra and delta > 0:
-            carrito_compra[p_id] = {
-                "nombre": producto.nombre,
-                "precio": float(producto.precio_venta or 0.0),
-                "cantidad": 0
-            }
-        
-        if p_id in carrito_compra:
-            carrito_compra.clear()
-            carrito_compra[p_id] = {
-                "nombre": producto.nombre,
-                "precio": float(producto.precio_venta or 0.0),
-                "cantidad": max(1, delta)
-            }
-        
-        actualizar_ui_checkout()
+            txt_checkout.value = f"Confirmar Pedido: {item['cantidad']} x {item['nombre']} (S/ {item['cantidad'] * item['precio']:.2f}) 🛒"
+            btn_checkout_container.visible = True
         page.update()
+
+    def modificar_unidades(producto, operacion, txt_contador):
+        p_id = producto.id
+        
+        if p_id not in carrito_compra and operacion == "suma":
+            carrito_compra.clear()  # Limpieza multi-licor preventiva para indexar orden única
+            carrito_compra[p_id] = {
+                "nombre": producto.nombre,
+                "precio": float(producto.precio_venta or 0.0),
+                "cantidad": 1
+            }
+            txt_contador.value = "1"
+            txt_contador.visible = True
+        elif p_id in carrito_compra:
+            cantidad_actual = carrito_compra[p_id]["cantidad"]
+            if operacion == "suma" and cantidad_actual < 12:
+                carrito_compra[p_id]["cantidad"] += 1
+                txt_contador.value = str(carrito_compra[p_id]["cantidad"])
+            elif operacion == "resta":
+                if cantidad_actual > 1:
+                    carrito_compra[p_id]["cantidad"] -= 1
+                    txt_contador.value = str(carrito_compra[p_id]["cantidad"])
+                else:
+                    carrito_compra.clear()
+                    txt_contador.value = "0"
+                    txt_contador.visible = False
+
+        actualizar_ui_checkout()
 
     async def renderizar_catalogo_cliente(termino=""):
         try:
             grid_productos_ui.controls.clear()
             prods = await run_db(lambda db: db.query(models.Producto).filter(
                 ~models.Producto.nombre.startswith("[DESCONTINUADO]")
-            ).all())
+            ).order_by(models.Producto.id.asc()).all())
             
             if termino:
                 prods = [p for p in prods if termino in p.nombre.lower()]
@@ -500,7 +494,7 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str):
             if not prods:
                 grid_productos_ui.controls.append(
                     ft.Container(
-                        content=ft.Text("No se encontraron licores con ese nombre.", color="grey", italic=True),
+                        content=ft.Text("No se encontraron licores disponibles.", color="grey", italic=True),
                         padding=20, alignment=ft.alignment.center
                     )
                 )
@@ -509,40 +503,52 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str):
 
             for p in prods:
                 precio = float(p.precio_venta or 0.0)
+                txt_unidades = ft.Text("0", size=14, weight="bold", color="#fbbf24", visible=False)
+                
+                # Fila de control dinámico +/- (Sólo visible si modo == "pedido")
+                controles_carrito = ft.Row([
+                    ft.IconButton(
+                        icon=ft.icons.REMOVE_CIRCLE_OUTLINE,
+                        icon_color="grey_400",
+                        icon_size=20,
+                        on_click=lambda e, prod=p, txt=txt_unidades: modificar_unidades(prod, "resta", txt)
+                    ),
+                    txt_unidades,
+                    ft.IconButton(
+                        icon=ft.icons.ADD_CIRCLE,
+                        icon_color="#fbbf24",
+                        icon_size=24,
+                        on_click=lambda e, prod=p, txt=txt_unidades: modificar_unidades(prod, "suma", txt)
+                    )
+                ], spacing=4) if modo == "pedido" else ft.Container()
+
                 tarjeta_licor = ft.Container(
                     content=ft.Row([
                         ft.Container(
-                            content=ft.Icon(ft.icons.LOCAL_DRINK, color="#fbbf24", size=24),
+                            content=ft.Icon(ft.icons.LOCAL_DRINK, color="#fbbf24", size=22),
                             bgcolor="#1c2430" if (p.stock_actual or 0) > (p.stock_minimo or 10) else "#3a1010",
-                            padding=12, border_radius=8
+                            padding=10, border_radius=8
                         ),
                         ft.Column([
-                            ft.Text(p.nombre, size=15, weight="bold", color="white", max_lines=1),
-                            ft.Text(f"S/ {precio:.2f}", size=14, color="#fbbf24", weight="w600"),
-                            ft.Text(f"Disponible en Chincha: {p.stock_actual} uds", size=11, color="grey")
-                        ], spacing=2, expand=True),
-                        ft.IconButton(
-                            icon=ft.icons.ADD_SHOPPING_CART,
-                            icon_color="white",
-                            bgcolor="#1565c0",
-                            icon_size=18,
-                            on_click=lambda e, prod=p: cambiar_cantidad(prod, 1)
-                        )
+                            ft.Text(p.nombre, size=14, weight="bold", color="white", max_lines=1, overflow=ft.TextOverflow.ELIPSIS),
+                            ft.Text(f"S/ {precio:.2f}", size=13, color="#fbbf24", weight="w600"),
+                            ft.Text(f"Disponibles: {p.stock_actual} uds", size=10, color="grey")
+                        ], spacing=1, expand=True),
+                        controles_carrito
                     ], alignment="spaceBetween"),
-                    padding=14,
+                    padding=12,
                     bgcolor="#0f1214",
-                    border_radius=12,
+                    border_radius=10,
                     border=ft.border.all(1, "#1a1d20")
                 )
                 grid_productos_ui.controls.append(tarjeta_licor)
             await page.update_async()
             
         except Exception as err:
-            # CAPTURA DE SEGURIDAD: Muestra el error exacto en la pantalla móvil si la BD falla
             grid_productos_ui.controls.clear()
             grid_productos_ui.controls.append(
                 ft.Container(
-                    content=ft.Text(f"⚠️ Error al conectar con el inventario: {str(err)}", color="red_accent", size=14),
+                    content=ft.Text(f"⚠️ Error al conectar con el inventario: {str(err)}", color="red_accent", size=13),
                     padding=20, bgcolor="#2a1010", border_radius=8
                 )
             )
@@ -551,33 +557,44 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str):
     async def buscar_licor_cliente(e):
         await renderizar_catalogo_cliente(e.control.value.lower())
 
-    # --- DISEÑO UI EXCLUSIVO PARA SMARTPHONES DE CLIENTES ---
+    # --- ENTORNO WEB INTERACTIVO DEL NAVEGADOR MÓVIL ---
     header_cliente = ft.Container(
-        padding=ft.padding.symmetric(horizontal=16, vertical=16),
+        padding=ft.padding.symmetric(horizontal=16, vertical=14),
         bgcolor="#0f1214",
         border=ft.Border(bottom=ft.BorderSide(1, "#1a1d20")),
         content=ft.Column([
             ft.Row([
                 ft.Column([
-                    ft.Text("Smart-Liquor Express 🍾", size=18, weight="bold", color="white"),
-                    ft.Text("Delivery rápido directo a tu casa", color="grey", size=11),
+                    ft.Text("Smart-Liquor Express 🍾", size=17, weight="bold", color="white"),
+                    ft.Text("Modo Solo Lectura 👀" if modo == "ver" else "Catálogo de Pedidos Activo 🛒", color="grey", size=11),
                 ]),
                 ft.Container(
-                    content=ft.Text("CHINCHA", color="#a7f3d0", size=10, weight="bold"),
-                    bgcolor="#0b2a1a", padding=6, border_radius=6, border=ft.border.all(1, "#14532d")
+                    content=ft.Text("CHINCHA", color="#a7f3d0", size=9, weight="bold"),
+                    bgcolor="#0b2a1a", padding=5, border_radius=5, border=ft.border.all(1, "#14532d")
                 )
             ], alignment="spaceBetween"),
-            ft.Container(height=6),
+            ft.Container(height=4),
             ft.TextField(
-                hint_text="¿Qué te provoca tomar hoy? Buscar...",
+                hint_text="Buscar licor o bebida...",
                 on_change=buscar_licor_cliente,
                 border_color="#232629",
-                border_radius=10, height=42,
+                border_radius=10, height=40,
                 text_size=13, content_padding=10,
                 prefix_icon=ft.icons.SEARCH,
                 bgcolor="#111416"
             )
         ])
+    )
+
+    btn_checkout_container.content = ft.Container(
+        content=ft.Row([
+            ft.Icon(ft.icons.SHOPPING_BAG, color="white", size=18),
+            txt_checkout
+        ], alignment="center", spacing=8),
+        bgcolor="#1e7e34", 
+        padding=14, 
+        border_radius=10,
+        on_click=lambda e: page.run_task(enviar_carrito_a_whatsapp)
     )
 
     page.controls.clear()
@@ -589,7 +606,7 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str):
             expand=True
         ),
         ft.Container(
-            content=btn_checkout,
+            content=btn_checkout_container,
             padding=16,
             bgcolor="#0b0d0f"
         )
