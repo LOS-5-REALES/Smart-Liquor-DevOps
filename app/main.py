@@ -27,9 +27,7 @@ async def app_con_login(page: ft.Page):
     page.title      = "Smart-Liquor DevOps"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor    = "#0b0d0f"
-    
-    # Configuración base responsive para asegurar renderizado correcto en celulares
-    page.padding = 0
+    page.padding    = 0
 
     async def mostrar_login():
         from componentes.login_screen import build_login_screen
@@ -58,30 +56,33 @@ async def app_con_login(page: ft.Page):
 
     async def evaluar_ruta_y_desplegar(route_event=None):
         """
-        Manejador dinámico de rutas encargado de romper el bloqueo de pantalla negra
-        en navegadores de smartphones capturando query strings sobre eventos asíncronos.
+        Manejador dinámico y redundante encargado de estabilizar la sesión en 
+        smartphones evitando ejecuciones cruzadas o caídas a pantallas vacías.
         """
         url_contexto = str(page.route or "")
         print(f"[FLET ROUTE DETECTED] Ruta cruda en navegación: {url_contexto}")
 
-        telefono_cliente = None
-        modo_catalogo = "ver"  # Por defecto modo lectura segura
+        # Intentar lectura nativa desde la query string primero para entornos estables
+        telefono_cliente = page.query.get("telefono")
+        modo_catalogo = page.query.get("modo", "ver")
 
-        # ── EXTRACCIÓN MAESTRA VÍA REGEX (Para entornos móviles embebidos) ──
-        match_tel = re.search(r"telefono=([0-9]+)", url_contexto)
-        if match_tel:
-            telefono_cliente = match_tel.group(1)
+        # Fallback de seguridad vía Regex si page.query viene vacío por wrappers webview de WhatsApp
+        if not telefono_cliente:
+            match_tel = re.search(r"telefono=([0-9]+)", url_contexto)
+            if match_tel:
+                telefono_cliente = match_tel.group(1)
 
-        match_modo = re.search(r"modo=([a-zA-Z]+)", url_contexto)
-        if match_modo:
-            modo_catalogo = match_modo.group(1)
+        if url_contexto and not page.query.get("modo"):
+            match_modo = re.search(r"modo=([a-zA-Z]+)", url_contexto)
+            if match_modo:
+                modo_catalogo = match_modo.group(1)
 
-        # ── CONTROL FLUJO MAESTRO INTERACTIVO ──
+        # ── CONTROL DE FLUJO MULTIUSUARIO INMUTABLE ──
         if telefono_cliente:
-            print(f"[MAIN CONTROL] Modo Catálogo Digital Cliente: {telefono_cliente} | Modo: {modo_catalogo}")
+            print(f"[MAIN CONTROL] Modo Catálogo Activo: {telefono_cliente} | Enfoque: {modo_catalogo}")
             from ui import main as build_dashboard
             
-            # Guardamos los parámetros limpios en la sesión segura de Flet
+            # Guardamos de forma persistente los parámetros en la sesión del cliente
             page.session.set("telefono_cliente_whatsapp", telefono_cliente)
             page.session.set("modo_catalogo", modo_catalogo)
             
@@ -89,16 +90,21 @@ async def app_con_login(page: ft.Page):
             page.padding = 0
             await build_dashboard(page)
         else:
-            # Si no hay teléfono en la URL, asumimos que es el administrador queriendo entrar al panel
-            print("[MAIN CONTROL] Acceso estándar sin parámetros. Cargando Login administrativo.")
+            # Prevención de sobreescritura accidental: si ya hay una sesión activa de cliente, evitamos mandarlo al login
+            if page.session.get("telefono_cliente_whatsapp"):
+                print("[MAIN CONTROL] Manteniendo sesión activa del cliente actual.")
+                return
+                
+            print("[MAIN CONTROL] Acceso estándar detectado. Desplegando Login Administrativo.")
             page.session.set("modo_catalogo", "admin")
             await mostrar_login()
 
-    # Vincular al escuchador de cambios de ruta nativo (Crucial para navegadores móviles)
-    page.on_route_change = evaluar_ruta_y_desplegar
-    
-    # Forzar la primera evaluación al levantar la vista
+    # Desactivar temporalmente el listener para prevenir bucles de recarga en el primer renderizado móvil
+    page.on_route_change = None
     await evaluar_ruta_y_desplegar(None)
+    
+    # Vincular formalmente una vez inicializada la vista base
+    page.on_route_change = evaluar_ruta_y_desplegar
 
 
 app.mount("/", flet_fastapi.app(app_con_login))
