@@ -101,7 +101,7 @@ def registrar_cliente_completo(telefono: str, texto_registro: str) -> bool:
 
 
 def registrar_pedido(telefono: str, producto_id: int, cantidad: int) -> tuple[bool, float | str]:
-    """Crea el pedido de forma transaccional reduciendo stock."""
+    """Crea el pedido de forma transaccional reduciendo stock en base al esquema double precision."""
     try:
         with Session(engine) as db:
             cliente = db.query(models.Cliente).filter(models.Cliente.telefono == telefono).first()
@@ -113,13 +113,14 @@ def registrar_pedido(telefono: str, producto_id: int, cantidad: int) -> tuple[bo
                 return False, "Producto no encontrado."
                 
             if (producto.stock_actual or 0) < cantidad:
-                return False, f"Solo hay {producto.stock_actual} units."
+                return False, f"Solo hay {producto.stock_actual} unidades."
 
             producto.stock_actual -= cantidad
             if producto.stock_actual <= (producto.stock_minimo or 10):
                 producto.alerta_roja = True
 
-            total = (producto.precio_venta or 0) * cantidad
+            # Al ser double precision, forzamos float nativo de Python de forma segura
+            total = float(producto.precio_venta or 0.0) * cantidad
 
             nuevo_pedido = models.Pedido(
                 cliente_id=cliente.id,
@@ -131,6 +132,8 @@ def registrar_pedido(telefono: str, producto_id: int, cantidad: int) -> tuple[bo
             db.add(nuevo_pedido)
             db.flush()
 
+            # IMPORTANTE: Asegúrate de que en tu archivo models.py, este modelo 
+            # apunte a la tabla 'detalle_pedidos' (singular según tu script SQL)
             detalle = models.DetallePedido(
                 pedido_id=nuevo_pedido.id,
                 producto_id=producto_id,
@@ -141,6 +144,7 @@ def registrar_pedido(telefono: str, producto_id: int, cantidad: int) -> tuple[bo
             return True, total
     except Exception as e:
         print(f"[ERROR PEDIDO] No se pudo guardar el pedido: {e}")
+        traceback.print_exc()
         return False, "Error interno del servidor."
 
 
@@ -186,8 +190,9 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     for i, p in enumerate(productos, 1):
                         stock_ok = (p.stock_actual or 0) > (p.stock_minimo or 10)
                         estado   = "✅" if stock_ok else "⚠️ Últimas"
+                        precio   = float(p.precio_venta or 0.0)
                         texto   += f"{i}. *{p.nombre}*\n"
-                        texto   += f"   💰 S/ {p.precio_venta:.2f}  {estado}\n\n"
+                        texto   += f"   💰 S/ {precio:.2f}  {estado}\n\n"
                     texto += "Escribe *2* para iniciar tu pedido."
                     msg.body(texto)
             except Exception:
@@ -220,7 +225,6 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
     elif paso == "esperando_registro_unico":
         exito = registrar_cliente_completo(telefono, mensaje)
         if exito:
-            # Forzamos la asignación de paso sobre la variable local controlada por el scope principal
             sesion["paso"] = "eligiendo_producto"
             ir_a_seleccion_productos(msg, sesion)
         else:
@@ -244,11 +248,11 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     "paso": "eligiendo_cantidad",
                     "producto_id": prod_id,
                     "producto_nombre": prod_nombre,
-                    "producto_precio": prod_precio,
+                    "producto_precio": float(prod_precio),
                 })
                 msg.body(
                     f"🍾 Seleccionaste: *{prod_nombre}*\n"
-                    f"💰 Precio: S/ {prod_precio:.2f}\n\n"
+                    f"💰 Precio: S/ {float(prod_precio):.2f}\n\n"
                     "¿Cuántas unidades deseas? (Ejemplo: 2)"
                 )
             else:
@@ -264,7 +268,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             if cantidad <= 0:
                 raise ValueError()
 
-            total = sesion["producto_precio"] * cantidad
+            total = float(sesion["producto_precio"]) * cantidad
             sesion.update({
                 "paso": "confirmando",
                 "cantidad": cantidad,
@@ -291,7 +295,7 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             if ok:
                 msg.body(
                     f"✅ *¡Pedido registrado!*\n\n"
-                    f"💰 Total a pagar: S/ {resultado:.2f}\n\n"
+                    f"💰 Total a pagar: S/ {float(resultado):.2f}\n\n"
                     "🚚 Tu pedido ya figura en el panel administrativo de Chincha. ¡Gracias!"
                 )
             else:
@@ -320,11 +324,13 @@ def ir_a_seleccion_productos(msg, sesion):
                 "━━━━━━━━━━━━━━━━━━━━\n\n"
             )
             for i, p in enumerate(productos, 1):
-                texto += f"{i}. {p.nombre} — S/ {p.precio_venta:.2f}\n"
+                # Sincronizado nativamente con double precision (float)
+                precio = float(p.precio_venta or 0.0)
+                texto += f"{i}. {p.nombre} — S/ {precio:.2f}\n"
             texto += "\n👉 Responde con el *número* del producto para agregarlo a tu carrito:"
             
             sesion["paso"] = "eligiendo_producto"
-            sesion["productos"] = [(int(p.id), str(p.nombre), float(p.precio_venta)) for p in productos]
+            sesion["productos"] = [(int(p.id), str(p.nombre), float(p.precio_venta or 0.0)) for p in productos]
             msg.body(texto)
     except Exception as e:
         print(f"[ERROR EN ir_a_seleccion_productos]: {e}")
