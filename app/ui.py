@@ -49,7 +49,7 @@ async def main(page: ft.Page):
             telefono_cliente = page.query.get("telefono")
             modo_catalogo = page.query.get("modo", "ver")
     except Exception as e:
-        print(f"[UI SESSION WARNING] Error leyendo sesión base, usando valores vacíos: {e}")
+        print(f"[UI SESSION WARNING] Errores leyendo sesión base, usando valores vacíos: {e}")
         telefono_cliente = None
         modo_catalogo = "ver"
 
@@ -577,7 +577,7 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
     async def buscar_licor_cliente(e):
         await renderizar_catalogo_cliente(e.control.value.lower())
 
-    # --- ENTORNO WEB INTERACTIVO DEL NAVEGADOR MÓVIL ---
+    # --- ENTORNO WEB INTERACTIVO DEL NAVEGADORAAAAA MÓVIL ---
     header_cliente = ft.Container(
         padding=ft.padding.symmetric(horizontal=16, vertical=14),
         bgcolor="#0f1214",
