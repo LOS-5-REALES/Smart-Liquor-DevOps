@@ -22,7 +22,7 @@ from componentes import (
 )
 
 # Configuración del Número del Bot Real de tu Negocio (Formato Internacional sin el +)
-NUMERO_BOT_WHATSAPP = "51977860423"  
+NUMERO_BOT_WHATSAPP = "14155238886"  # Reemplaza con tu número real de Twilio (sin el prefijo "whatsapp:" ni el "+")
 
 async def run_db(fn):
     def _execute():

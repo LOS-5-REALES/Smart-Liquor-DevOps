@@ -42,12 +42,12 @@ async def app_con_login(page: ft.Page):
         from ui import main as build_dashboard
         try:
             await page.clean_async()
-            page.padding = 25
+            page.padding = 0
             page.session.set("mostrar_login", mostrar_login)
             page.session.set("telefono_cliente_whatsapp", None)
             page.session.set("modo_catalogo", "admin")
             await build_dashboard(page)
-            print(">>> Dashboard cargado OK")
+            print(">>> Dashboard Admin cargado OK")
         except Exception as ex:
             print(f">>> ERROR cargando dashboard: {ex}")
             import traceback
@@ -55,53 +55,89 @@ async def app_con_login(page: ft.Page):
 
     async def evaluar_ruta_y_desplegar(route_event=None):
         """
-        Manejador dinámico ultra-estable que protege el parámetro de teléfono
-        en memoria para evitar caídas y pantallas grises de 'KeyError: telefono' en smartphones.
+        Evalúa la ruta y los query params para decidir si mostrar
+        el catálogo del cliente o el panel administrativo.
+        Usa regex sobre page.route como método principal — más confiable
+        que page.query en Flet web desplegado detrás de Docker/Nginx.
         """
         url_contexto = str(page.route or "")
-        print(f"[FLET ROUTE DETECTED] Ruta cruda en navegación: {url_contexto}")
+        print(f"[ROUTE] Ruta detectada: {url_contexto}")
 
-        # 1. Intentar capturar desde la URL actual
-        telefono_cliente = page.query.get("telefono")
-        modo_catalogo = page.query.get("modo", "ver")
+        telefono_cliente = None
+        modo_catalogo    = "ver"
 
-        # 2. Fallback por Regex si page.query falló por enrutamiento de Nginx/Docker
+        # ── Método 1: Regex sobre la URL (más confiable) ──────
+        match_tel = re.search(r"[?&]telefono=([^&\s]+)", url_contexto)
+        if match_tel:
+            telefono_cliente = match_tel.group(1).strip()
+
+        match_modo = re.search(r"[?&]modo=([^&\s]+)", url_contexto)
+        if match_modo:
+            modo_catalogo = match_modo.group(1).strip()
+
+        # ── Método 2: page.query como fallback ────────────────
         if not telefono_cliente:
-            match_tel = re.search(r"telefono=([0-9]+)", url_contexto)
-            if match_tel:
-                telefono_cliente = match_tel.group(1)
+            try:
+                if page.query:
+                    telefono_cliente = page.query.get("telefono")
+                    modo_catalogo    = page.query.get("modo", "ver")
+            except Exception as eq:
+                print(f"[ROUTE] page.query no disponible: {eq}")
 
-        if url_contexto and not page.query.get("modo"):
-            match_modo = re.search(r"modo=([a-zA-Z]+)", url_contexto)
-            if match_modo:
-                modo_catalogo = match_modo.group(1)
-
-        # 3. SISTEMA DE RETENCIÓN DE MEMORIA SEGURO:
-        # Si ya teníamos un teléfono registrado en esta sesión, lo mantenemos persistente
-        # para que buscadores u operaciones secundarias no limpien la identidad del cliente.
+        # ── Método 3: Sesión persistente como último recurso ──
         if not telefono_cliente:
-            telefono_cliente = page.session.get("telefono_cliente_whatsapp")
-            modo_catalogo = page.session.get("modo_catalogo") or "ver"
+            try:
+                telefono_cliente = page.session.get("telefono_cliente_whatsapp")
+                modo_catalogo    = page.session.get("modo_catalogo") or "ver"
+            except Exception as es:
+                print(f"[ROUTE] Sesión no disponible: {es}")
 
-        # ── INTERCEPTOR Y DESPLIEGUE FINAL ──
-        if telefono_cliente:
-            print(f"[MAIN CONTROL] Cargando Catálogo Digital Cliente: {telefono_cliente} | Modo: {modo_catalogo}")
-            from ui import main as build_dashboard
-            
-            # Fijamos las credenciales de sesión de forma inmutable
-            page.session.set("telefono_cliente_whatsapp", str(telefono_cliente))
-            page.session.set("modo_catalogo", str(modo_catalogo))
-            
-            await page.clean_async() 
-            page.padding = 0
-            await build_dashboard(page)
+        print(f"[ROUTE] telefono={telefono_cliente} | modo={modo_catalogo}")
+
+        if telefono_cliente and str(telefono_cliente).strip():
+            # ── Cliente WhatsApp → Catálogo web ───────────────
+            print(f"[ROUTE] Cargando catálogo para cliente: {telefono_cliente}")
+            try:
+                page.session.set("telefono_cliente_whatsapp", str(telefono_cliente))
+                page.session.set("modo_catalogo", str(modo_catalogo))
+                from ui import main as build_dashboard
+                await page.clean_async()
+                page.padding = 0
+                await build_dashboard(page)
+            except Exception as ex:
+                print(f"[ROUTE ERROR] Error cargando catálogo cliente: {ex}")
+                import traceback
+                traceback.print_exc()
+                # Si falla mostrar mensaje amigable al cliente
+                await page.clean_async()
+                page.controls.append(
+                    ft.Container(
+                        expand=True,
+                        bgcolor="#0b0d0f",
+                        content=ft.Column(
+                            alignment="center",
+                            horizontal_alignment="center",
+                            expand=True,
+                            controls=[
+                                ft.Icon("local_bar", size=64, color="amber"),
+                                ft.Text("Smart-Liquor", size=28, weight="bold", color="white"),
+                                ft.Text("Cargando catálogo...", color="grey"),
+                                ft.ProgressRing(color="amber"),
+                            ]
+                        )
+                    )
+                )
+                await page.update_async()
         else:
-            print("[MAIN CONTROL] Sin parámetros de cliente. Cargando Login Administrativo.")
+            # ── Administrador → Login ──────────────────────────
+            print("[ROUTE] Sin parámetros de cliente → Login administrativo")
             page.session.set("modo_catalogo", "admin")
             await mostrar_login()
 
-    # Inicialización del listener de enrutamiento nativo
+    # Listener de cambios de ruta
     page.on_route_change = evaluar_ruta_y_desplegar
+
+    # Evaluar ruta inicial
     await evaluar_ruta_y_desplegar(None)
 
 
