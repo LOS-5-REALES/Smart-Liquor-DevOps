@@ -3,7 +3,8 @@
 Motor del Bot de WhatsApp — Smart Liquor
 Flujo: Menú → Registro (si nuevo) → URL Catálogo Web → Confirmación
 """
-
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 import traceback
 from twilio.twiml.messaging_response import MessagingResponse
 from sqlalchemy.orm import Session
@@ -67,10 +68,6 @@ def registrar_cliente_completo(telefono: str, texto: str) -> bool:
 
 
 def registrar_pedidos_multiples(telefono: str, items: list) -> tuple:
-    """
-    Registra un pedido con múltiples productos.
-    items = [{"producto_id": int, "cantidad": int}, ...]
-    """
     try:
         with Session(engine) as db:
             cliente = db.query(models.Cliente).filter(
@@ -81,14 +78,13 @@ def registrar_pedidos_multiples(telefono: str, items: list) -> tuple:
             total_general = 0.0
             detalles_confirmados = []
 
-            # Validar stock de todos los productos primero
             for item in items:
                 prod = db.query(models.Producto).filter(
                     models.Producto.id == item["producto_id"]).first()
                 if not prod:
                     return False, f"Producto ID {item['producto_id']} no encontrado."
                 if (prod.stock_actual or 0) < item["cantidad"]:
-                    return False, f"Stock insuficiente para {prod.nombre}. Solo hay {prod.stock_actual} uds."
+                    return False, f"Stock insuficiente para {prod.nombre}."
                 subtotal = float(prod.precio_venta or 0) * item["cantidad"]
                 total_general += subtotal
                 detalles_confirmados.append({
@@ -97,7 +93,6 @@ def registrar_pedidos_multiples(telefono: str, items: list) -> tuple:
                     "subtotal": subtotal
                 })
 
-            # Crear pedido principal
             nuevo_pedido = models.Pedido(
                 cliente_id=cliente.id,
                 total_pedido=total_general,
@@ -108,23 +103,37 @@ def registrar_pedidos_multiples(telefono: str, items: list) -> tuple:
             db.add(nuevo_pedido)
             db.flush()
 
-            # Crear detalles y reducir stock
             for d in detalles_confirmados:
                 d["prod"].stock_actual -= d["cantidad"]
                 if d["prod"].stock_actual <= (d["prod"].stock_minimo or 10):
                     d["prod"].alerta_roja = True
-                detalle = models.DetallePedido(
+                db.add(models.DetallePedido(
                     pedido_id=nuevo_pedido.id,
                     producto_id=d["prod"].id,
                     cantidad=d["cantidad"],
-                )
-                db.add(detalle)
+                ))
 
             db.commit()
             return True, total_general
 
+    except IntegrityError as e:
+        if "duplicate key" in str(e).lower():
+            print("[⚠️ BD] Llave duplicada. Reparando secuencia...")
+            try:
+                with Session(engine) as db_fix:
+                    db_fix.execute(text(
+                        "SELECT setval('pedidos_id_seq', "
+                        "COALESCE((SELECT MAX(id) FROM pedidos), 0) + 1, false);"
+                    ))
+                    db_fix.commit()
+                print("[⚙️ SECUENCIA REPARADA] Reintentando...")
+                return registrar_pedidos_multiples(telefono, items)
+            except Exception as fix_err:
+                print(f"[ERROR FIX] {fix_err}")
+        return False, "Error de duplicidad en Base de Datos."
+
     except Exception as e:
-        print(f"[ERROR pedido] {e}")
+        print(f"[ERROR PEDIDO MULTI] {e}")
         traceback.print_exc()
         return False, "Error interno del servidor."
 
