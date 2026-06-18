@@ -632,7 +632,7 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
             bgcolor="#0b0d0f"
         ),
         bgcolor="#0b0d0f",
-        height=80,
+        height=90,
     )
 
     await renderizar_catalogo_cliente()
