@@ -29,9 +29,15 @@ async def app_con_login(page: ft.Page):
     page.bgcolor    = "#0b0d0f"
     page.padding    = 0
 
+    async def limpiar_pagina():
+        """Limpia controles, overlay y bottomappbar de forma segura."""
+        page.controls.clear()
+        page.overlay.clear()
+        page.bottom_appbar = None
+
     async def mostrar_login():
         from componentes.login_screen import build_login_screen
-        await page.clean_async()
+        await limpiar_pagina()
         page.padding = 0
         page.controls.append(
             build_login_screen(page=page, on_login_exitoso=mostrar_dashboard)
@@ -41,7 +47,7 @@ async def app_con_login(page: ft.Page):
     async def mostrar_dashboard(usuario=None):
         from ui import main as build_dashboard
         try:
-            await page.clean_async()
+            await limpiar_pagina()
             page.padding = 0
             page.session.set("mostrar_login", mostrar_login)
             page.session.set("telefono_cliente_whatsapp", None)
@@ -54,19 +60,13 @@ async def app_con_login(page: ft.Page):
             traceback.print_exc()
 
     async def evaluar_ruta_y_desplegar(route_event=None):
-        """
-        Evalúa la ruta y los query params para decidir si mostrar
-        el catálogo del cliente o el panel administrativo.
-        Usa regex sobre page.route como método principal — más confiable
-        que page.query en Flet web desplegado detrás de Docker/Nginx.
-        """
         url_contexto = str(page.route or "")
         print(f"[ROUTE] Ruta detectada: {url_contexto}")
 
         telefono_cliente = None
         modo_catalogo    = "ver"
 
-        # ── Método 1: Regex sobre la URL (más confiable) ──────
+        # Método 1: Regex sobre la URL
         match_tel = re.search(r"[?&]telefono=([^&\s]+)", url_contexto)
         if match_tel:
             telefono_cliente = match_tel.group(1).strip()
@@ -75,7 +75,7 @@ async def app_con_login(page: ft.Page):
         if match_modo:
             modo_catalogo = match_modo.group(1).strip()
 
-        # ── Método 2: page.query como fallback ────────────────
+        # Método 2: page.query como fallback
         if not telefono_cliente:
             try:
                 if page.query:
@@ -84,7 +84,7 @@ async def app_con_login(page: ft.Page):
             except Exception as eq:
                 print(f"[ROUTE] page.query no disponible: {eq}")
 
-        # ── Método 3: Sesión persistente como último recurso ──
+        # Método 3: Sesión persistente
         if not telefono_cliente:
             try:
                 telefono_cliente = page.session.get("telefono_cliente_whatsapp")
@@ -95,32 +95,30 @@ async def app_con_login(page: ft.Page):
         print(f"[ROUTE] telefono={telefono_cliente} | modo={modo_catalogo}")
 
         if telefono_cliente and str(telefono_cliente).strip():
-            # ── Cliente WhatsApp → Catálogo web ───────────────
             print(f"[ROUTE] Cargando catálogo para cliente: {telefono_cliente}")
             try:
                 page.session.set("telefono_cliente_whatsapp", str(telefono_cliente))
                 page.session.set("modo_catalogo", str(modo_catalogo))
                 from ui import main as build_dashboard
-                await page.clean_async()
+                await limpiar_pagina()
                 page.padding = 0
                 await build_dashboard(page)
             except Exception as ex:
-                print(f"[ROUTE ERROR] Error cargando catálogo cliente: {ex}")
+                print(f"[ROUTE ERROR] {ex}")
                 import traceback
                 traceback.print_exc()
-                # Si falla mostrar mensaje amigable al cliente
-                await page.clean_async()
+                await limpiar_pagina()
                 page.controls.append(
                     ft.Container(
-                        expand=True,
-                        bgcolor="#0b0d0f",
+                        expand=True, bgcolor="#0b0d0f",
                         content=ft.Column(
                             alignment="center",
                             horizontal_alignment="center",
                             expand=True,
                             controls=[
                                 ft.Icon("local_bar", size=64, color="amber"),
-                                ft.Text("Smart-Liquor", size=28, weight="bold", color="white"),
+                                ft.Text("Smart-Liquor", size=28,
+                                        weight="bold", color="white"),
                                 ft.Text("Cargando catálogo...", color="grey"),
                                 ft.ProgressRing(color="amber"),
                             ]
@@ -129,15 +127,11 @@ async def app_con_login(page: ft.Page):
                 )
                 await page.update_async()
         else:
-            # ── Administrador → Login ──────────────────────────
             print("[ROUTE] Sin parámetros de cliente → Login administrativo")
             page.session.set("modo_catalogo", "admin")
             await mostrar_login()
 
-    # Listener de cambios de ruta
     page.on_route_change = evaluar_ruta_y_desplegar
-
-    # Evaluar ruta inicial
     await evaluar_ruta_y_desplegar(None)
 
 
