@@ -221,19 +221,24 @@ async def main(page: ft.Page):
             logout()
         except Exception:
             pass
-        # Guardar referencia ANTES de limpiar
-        _mostrar_login = page.session.get("mostrar_login")
-        # Limpiar sesion
         page.session.set("telefono_cliente_whatsapp", None)
         page.session.set("modo_catalogo", "admin")
-        # Limpiar controles
         page.controls.clear()
         page.overlay.clear()
         page.bottom_appbar = None
+        from componentes.login_screen import build_login_screen
+        async def on_login(usuario=None):
+            from ui import main as build_dashboard
+            page.controls.clear()
+            page.overlay.clear()
+            page.bottom_appbar = None
+            page.session.set("telefono_cliente_whatsapp", None)
+            page.session.set("modo_catalogo", "admin")
+            await build_dashboard(page)
+        page.controls.append(
+            build_login_screen(page=page, on_login_exitoso=on_login)
+        )
         await page.update_async()
-    # Mostrar login con la referencia guardada
-        if _mostrar_login:
-            await _mostrar_login()
 
     tab_index = {"actual": 0}
     contenido_central = ft.Container(
