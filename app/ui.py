@@ -223,11 +223,10 @@ async def main(page: ft.Page):
             pass
         page.session.set("telefono_cliente_whatsapp", None)
         page.session.set("modo_catalogo", "admin")
-        page.controls.clear()
-        page.overlay.clear()
-        page.bottom_appbar = None
-        await page.update_async()
-        page.go("/")
+    # Llamar mostrar_login directamente desde la sesion
+        _mostrar_login = page.session.get("mostrar_login")
+        if _mostrar_login:
+            await _mostrar_login()
 
     tab_index = {"actual": 0}
     contenido_central = ft.Container(
