@@ -350,9 +350,7 @@ async def main(page: ft.Page):
                 border_radius=8,
                 bgcolor="#0b2a1a",
                 border=ft.border.all(1, "#25D366"),
-                on_click=lambda e: asyncio.ensure_future(
-                    page.launch_url_async(f"{BASE_URL}/whatsapp")
-                ),
+                on_click=lambda e: page.run_task(page.launch_url_async, f"{BASE_URL}/whatsapp"),
             ),
             ft.Spacer(),
             ft.Container(
@@ -393,9 +391,7 @@ async def main(page: ft.Page):
         padding=ft.padding.symmetric(horizontal=10, vertical=10),
         border_radius=8,
         border=ft.border.all(1, "#25D366"),
-        on_click=lambda e: asyncio.ensure_future(
-            page.launch_url_async(f"{BASE_URL}/whatsapp")
-        ),
+         on_click=lambda e: page.run_task(page.launch_url_async, f"{BASE_URL}/whatsapp"),
     )
 
     btn_cerrar_sesion_movil = ft.Container(
@@ -467,9 +463,7 @@ async def main(page: ft.Page):
                     "WhatsApp", bgcolor="#25D366", color="white",
                     height=38, icon=ft.icons.CHAT,
                     style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
-                    on_click=lambda e: asyncio.ensure_future(
-                        page.launch_url_async(f"{BASE_URL}/whatsapp")
-                    ),
+                    on_click=lambda e: page.run_task(page.launch_url_async, f"{BASE_URL}/whatsapp"),
                 ),
                 ft.IconButton(ft.icons.REFRESH,
                               on_click=lambda e: page.run_task(refrescar_datos),
