@@ -31,7 +31,7 @@ def guardar_mensaje(telefono: str, mensaje: str, origen: str = "cliente"):
             cliente = db.query(models.Cliente).filter(
                 models.Cliente.telefono == telefono
             ).first()
-
+            print(f"[GUARDAR] telefono={telefono} | cliente={cliente} | origen={origen}")
             nuevo = models.MensajeWhatsapp(
                 telefono=telefono,
                 cliente_id=cliente.id if cliente else None,
@@ -39,14 +39,14 @@ def guardar_mensaje(telefono: str, mensaje: str, origen: str = "cliente"):
                 origen=origen,
             )
             db.add(nuevo)
-
-            # Actualizar ultimo_mensaje del cliente
             if cliente:
                 cliente.ultimo_mensaje = datetime.now(timezone.utc)
-
             db.commit()
+            print(f"[GUARDAR OK] Mensaje guardado correctamente")
     except Exception as e:
         print(f"[ERROR guardar_mensaje] {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def cliente_en_modo_agente(telefono: str) -> bool:
