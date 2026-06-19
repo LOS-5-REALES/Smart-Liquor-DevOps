@@ -221,10 +221,17 @@ async def main(page: ft.Page):
             logout()
         except Exception:
             pass
+        # Guardar referencia ANTES de limpiar
+        _mostrar_login = page.session.get("mostrar_login")
+        # Limpiar sesion
         page.session.set("telefono_cliente_whatsapp", None)
         page.session.set("modo_catalogo", "admin")
-    # Llamar mostrar_login directamente desde la sesion
-        _mostrar_login = page.session.get("mostrar_login")
+        # Limpiar controles
+        page.controls.clear()
+        page.overlay.clear()
+        page.bottom_appbar = None
+        await page.update_async()
+    # Mostrar login con la referencia guardada
         if _mostrar_login:
             await _mostrar_login()
 
