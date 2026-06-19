@@ -23,6 +23,7 @@ def read_root():
     return {"Smart_Liquor": "Backend Operativo vinculado a Supabase 🚀"}
 
 
+# ── App principal (dashboard + catalogo cliente) ──────────────
 async def app_con_login(page: ft.Page):
     page.title      = "Smart-Liquor DevOps"
     page.theme_mode = ft.ThemeMode.DARK
@@ -30,7 +31,6 @@ async def app_con_login(page: ft.Page):
     page.padding    = 0
 
     async def limpiar_pagina():
-        """Limpia controles, overlay y bottomappbar de forma segura."""
         page.controls.clear()
         page.overlay.clear()
         page.bottom_appbar = None
@@ -66,7 +66,6 @@ async def app_con_login(page: ft.Page):
         telefono_cliente = None
         modo_catalogo    = "ver"
 
-        # Método 1: Regex sobre la URL
         match_tel = re.search(r"[?&]telefono=([^&\s]+)", url_contexto)
         if match_tel:
             telefono_cliente = match_tel.group(1).strip()
@@ -75,7 +74,6 @@ async def app_con_login(page: ft.Page):
         if match_modo:
             modo_catalogo = match_modo.group(1).strip()
 
-        # Método 2: page.query como fallback
         if not telefono_cliente:
             try:
                 if page.query:
@@ -84,7 +82,6 @@ async def app_con_login(page: ft.Page):
             except Exception as eq:
                 print(f"[ROUTE] page.query no disponible: {eq}")
 
-        # Método 3: Sesión persistente
         if not telefono_cliente:
             try:
                 telefono_cliente = page.session.get("telefono_cliente_whatsapp")
@@ -135,6 +132,14 @@ async def app_con_login(page: ft.Page):
     await evaluar_ruta_y_desplegar(None)
 
 
+# ── App Panel WhatsApp (ruta independiente) ───────────────────
+async def app_whatsapp(page: ft.Page):
+    from whatsapp_page import whatsapp_main
+    await whatsapp_main(page)
+
+
+# ── Montar rutas ──────────────────────────────────────────────
+app.mount("/whatsapp", flet_fastapi.app(app_whatsapp))
 app.mount("/", flet_fastapi.app(app_con_login))
 
 if __name__ == "__main__":
