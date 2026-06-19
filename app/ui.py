@@ -40,7 +40,6 @@ async def main(page: ft.Page):
     page.padding    = 0
     page.scroll     = ft.ScrollMode.ADAPTIVE
 
-    # ── Lectura segura de sesion ──────────────────────────────
     try:
         telefono_cliente = page.session.get("telefono_cliente_whatsapp") if page.session else None
         modo_catalogo    = page.session.get("modo_catalogo") if page.session else "ver"
@@ -69,8 +68,6 @@ async def main(page: ft.Page):
     panel_clientes, refrescar_clientes = build_panel_clientes(
         page=page, run_db=run_db, models=models, crud=crud
     )
-
-    # ── Panel WhatsApp ────────────────────────────────────────
     panel_whatsapp, refrescar_whatsapp = build_panel_whatsapp(
         page=page, run_db=run_db
     )
@@ -229,8 +226,12 @@ async def main(page: ft.Page):
             await mostrar_login()
 
     tab_index = {"actual": 0}
-    contenido_central = ft.Container(expand=True)
+    contenido_central = ft.Container(
+        padding=ft.padding.all(16),
+        expand=True,
+    )
 
+    # ── Vistas ────────────────────────────────────────────────
     def vista_pedidos():
         return ft.Column([
             ft.Text("Gestión de Pedidos", size=22, weight="bold", color="white"),
@@ -242,7 +243,8 @@ async def main(page: ft.Page):
     def vista_inventario():
         return ft.Column([
             ft.Row([
-                ft.Text("Control de Inventario", size=22, weight="bold", color="white", expand=True),
+                ft.Text("Control de Inventario", size=22, weight="bold",
+                        color="white", expand=True),
                 ft.ElevatedButton(
                     "Nuevo Producto", bgcolor="#2e7d32", color="white", height=40,
                     icon=ft.icons.ADD,
@@ -253,11 +255,9 @@ async def main(page: ft.Page):
                 content=ft.TextField(
                     hint_text="Buscar por nombre de licor...",
                     on_change=buscar_en_inventario,
-                    border_color="#232629",
-                    border_radius=12, height=45,
+                    border_color="#232629", border_radius=12, height=45,
                     text_size=14, content_padding=12,
-                    prefix_icon=ft.icons.SEARCH,
-                    bgcolor="#111416"
+                    prefix_icon=ft.icons.SEARCH, bgcolor="#111416"
                 ),
                 padding=ft.padding.only(top=10, bottom=10)
             ),
@@ -277,13 +277,9 @@ async def main(page: ft.Page):
                 ft.Icon(ft.icons.CHAT, color="#25D366", size=22),
                 ft.Text("Panel WhatsApp", size=22, weight="bold", color="white"),
             ], spacing=10),
-            ft.Divider(height=8, color="#1a1d20"),
-            ft.Container(
-                content=panel_whatsapp,
-                expand=True,
-                height=600,  # ← altura fija para forzar render
-            ),
-        ], expand=True)
+            ft.Divider(height=6, color="#1a1d20"),
+            panel_whatsapp,
+        ], spacing=8, expand=True)
 
     vistas = [vista_pedidos, vista_inventario, vista_clientes, vista_whatsapp]
 
@@ -293,15 +289,18 @@ async def main(page: ft.Page):
             if isinstance(item, ft.Container):
                 is_selected = i == idx
                 item.bgcolor = "#1a1f26" if is_selected else "transparent"
-                item.content.controls[0].icon_color = "#25D366" if (is_selected and i == 3) else ("#2196f3" if is_selected else "grey")
+                item.content.controls[0].icon_color = (
+                    "#25D366" if (is_selected and i == 3)
+                    else ("#2196f3" if is_selected else "grey")
+                )
                 item.content.controls[1].color = "white" if is_selected else "grey"
         for i, btn in enumerate(btn_tabs):
             btn.bgcolor = "#1a1f26" if i == idx else "#111416"
             btn.border  = ft.border.all(1, "#2196f3" if i == idx else "#232629")
         contenido_central.content = vistas[idx]()
-        await page.update_async()  # ← primero actualizar la página
+        await page.update_async()
         if idx == 3:
-            await refrescar_whatsapp()  # ← luego refrescar el panel
+            await refrescar_whatsapp()
 
     def handler_cambio_seccion(idx):
         return lambda e: page.run_task(cambiar_seccion, idx)
@@ -370,13 +369,29 @@ async def main(page: ft.Page):
         )
         btn_tabs.append(btn)
 
+    # ── Boton cerrar sesion para movil ────────────────────────
+    btn_cerrar_sesion_movil = ft.Container(
+        content=ft.Row([
+            ft.Icon(ft.icons.LOGOUT, color="red_accent", size=16),
+            ft.Text("Salir", color="red_accent", size=12),
+        ], spacing=4),
+        bgcolor="#111416",
+        padding=ft.padding.symmetric(horizontal=10, vertical=8),
+        border_radius=8,
+        border=ft.border.all(1, "#c62828"),
+        on_click=lambda e: page.run_task(cerrar_sesion),
+    )
+
     layout_movil = ft.Column([
         ft.Container(
-            padding=ft.padding.symmetric(horizontal=10, vertical=5),
-            content=ft.Row(btn_tabs, spacing=6, wrap=True)
+            padding=ft.padding.symmetric(horizontal=8, vertical=5),
+            content=ft.Row([
+                *btn_tabs,
+                btn_cerrar_sesion_movil,
+            ], spacing=4, wrap=True)
         ),
         ft.Divider(height=1, color="#1a1d20"),
-        contenido_central
+        contenido_central,
     ], spacing=4, expand=True)
 
     layout_sistema = ft.ResponsiveRow(
@@ -422,6 +437,13 @@ async def main(page: ft.Page):
                 ft.IconButton(ft.icons.REFRESH,
                               on_click=lambda e: page.run_task(refrescar_datos),
                               bgcolor="#111416", icon_color="white", icon_size=18),
+                # Cerrar sesion visible en header para movil
+                ft.IconButton(
+                    ft.icons.LOGOUT,
+                    icon_color="red_accent", icon_size=18,
+                    tooltip="Cerrar sesión",
+                    on_click=lambda e: page.run_task(cerrar_sesion),
+                ),
             ], spacing=8),
         ], alignment="spaceBetween"),
     )
@@ -441,7 +463,7 @@ async def main(page: ft.Page):
     await refrescar_datos()
 
 
-# ── INTERFAZ DEL CLIENTE (CATÁLOGO WEB VIA WHATSAPP) ─────────
+# ── INTERFAZ DEL CLIENTE ──────────────────────────────────────
 async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver"):
     page.scroll = ft.ScrollMode.ADAPTIVE
 
@@ -538,7 +560,8 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
                 tarjeta = ft.Container(
                     content=ft.Row([
                         ft.Container(
-                            content=ft.Icon(ft.icons.LOCAL_DRINK, color="#fbbf24", size=22),
+                            content=ft.Icon(ft.icons.LOCAL_DRINK,
+                                            color="#fbbf24", size=22),
                             bgcolor="#1c2430" if (p.stock_actual or 0) > (p.stock_minimo or 10)
                                     else "#3a1010",
                             padding=10, border_radius=8
@@ -585,7 +608,8 @@ async def cargar_interfaz_cliente(page: ft.Page, telefono: str, modo: str = "ver
                     ),
                 ]),
                 ft.Container(
-                    content=ft.Text("CHINCHA", color="#a7f3d0", size=9, weight="bold"),
+                    content=ft.Text("CHINCHA", color="#a7f3d0",
+                                    size=9, weight="bold"),
                     bgcolor="#0b2a1a", padding=5, border_radius=5,
                     border=ft.border.all(1, "#14532d")
                 )
