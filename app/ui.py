@@ -272,14 +272,13 @@ async def main(page: ft.Page):
         ], expand=True)
 
     def vista_whatsapp():
-        page.run_task(refrescar_whatsapp)
         return ft.Column([
             ft.Row([
                 ft.Icon(ft.icons.CHAT, color="#25D366", size=22),
                 ft.Text("Panel WhatsApp", size=22, weight="bold", color="white"),
             ], spacing=10),
             ft.Container(height=8),
-            ft.Container(content=panel_whatsapp, expand=True),
+            panel_whatsapp,
         ], expand=True)
 
     vistas = [vista_pedidos, vista_inventario, vista_clientes, vista_whatsapp]
@@ -296,10 +295,9 @@ async def main(page: ft.Page):
             btn.bgcolor = "#1a1f26" if i == idx else "#111416"
             btn.border  = ft.border.all(1, "#2196f3" if i == idx else "#232629")
         contenido_central.content = vistas[idx]()
-        # Refrescar whatsapp al entrar a esa pestaña
+        await page.update_async()  # ← primero actualizar la página
         if idx == 3:
-            await refrescar_whatsapp()
-        await page.update_async()
+            await refrescar_whatsapp()  # ← luego refrescar el panel
 
     def handler_cambio_seccion(idx):
         return lambda e: page.run_task(cambiar_seccion, idx)
