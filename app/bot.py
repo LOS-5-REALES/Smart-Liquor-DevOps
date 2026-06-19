@@ -22,16 +22,11 @@ NUMERO_BOT   = "14155238886"
 # ── Helpers de historial ──────────────────────────────────────
 
 def guardar_mensaje(telefono: str, mensaje: str, origen: str = "cliente"):
-    """
-    Guarda un mensaje en la tabla mensajes_whatsapp.
-    origen: 'cliente', 'bot' o 'agente'
-    """
     try:
         with Session(engine) as db:
             cliente = db.query(models.Cliente).filter(
                 models.Cliente.telefono == telefono
             ).first()
-            print(f"[GUARDAR] telefono={telefono} | cliente={cliente} | origen={origen}")
             nuevo = models.MensajeWhatsapp(
                 telefono=telefono,
                 cliente_id=cliente.id if cliente else None,
@@ -42,15 +37,12 @@ def guardar_mensaje(telefono: str, mensaje: str, origen: str = "cliente"):
             if cliente:
                 cliente.ultimo_mensaje = datetime.now(timezone.utc)
             db.commit()
-            print(f"[GUARDAR OK] Mensaje guardado correctamente")
     except Exception as e:
         print(f"[ERROR guardar_mensaje] {e}")
-        import traceback
         traceback.print_exc()
 
 
 def cliente_en_modo_agente(telefono: str) -> bool:
-    """Verifica si el cliente está siendo atendido por un agente humano."""
     try:
         with Session(engine) as db:
             c = db.query(models.Cliente).filter(
@@ -61,16 +53,29 @@ def cliente_en_modo_agente(telefono: str) -> bool:
         return False
 
 
+def desactivar_modo_agente(telefono: str):
+    try:
+        with Session(engine) as db:
+            c = db.query(models.Cliente).filter(
+                models.Cliente.telefono == telefono
+            ).first()
+            if c and c.modo_agente:
+                c.modo_agente = False
+                db.commit()
+                print(f"[BOT] Modo agente desactivado para {telefono}")
+    except Exception as e:
+        print(f"[ERROR desactivar_modo_agente] {e}")
+
+
 def activar_modo_agente(telefono: str):
-    """Activa modo_agente=True para que el bot deje de responder."""
     try:
         with Session(engine) as db:
             c = db.query(models.Cliente).filter(
                 models.Cliente.telefono == telefono
             ).first()
             if c:
-                c.modo_agente      = True
-                c.ultimo_mensaje   = datetime.now(timezone.utc)
+                c.modo_agente    = True
+                c.ultimo_mensaje = datetime.now(timezone.utc)
                 db.commit()
     except Exception as e:
         print(f"[ERROR activar_modo_agente] {e}")
@@ -120,10 +125,10 @@ def registrar_cliente_completo(telefono: str, texto: str) -> bool:
             if not c:
                 c = models.Cliente(telefono=telefono, nombre_completo="Cliente WhatsApp")
                 db.add(c)
-            c.nombre_completo     = nombre
-            c.direccion_exacta    = direccion
+            c.nombre_completo      = nombre
+            c.direccion_exacta     = direccion
             c.referencia_ubicacion = referencia
-            c.ultimo_mensaje      = datetime.now(timezone.utc)
+            c.ultimo_mensaje       = datetime.now(timezone.utc)
             db.commit()
             return True
     except Exception as e:
@@ -133,7 +138,6 @@ def registrar_cliente_completo(telefono: str, texto: str) -> bool:
 
 
 def registrar_pedidos_multiples(telefono: str, items: list) -> tuple:
-    """Registra un pedido con múltiples productos con auto-reparación de secuencia."""
     try:
         with Session(engine) as db:
             cliente = db.query(models.Cliente).filter(
@@ -270,10 +274,18 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
     # ── Guardar mensaje del cliente en historial ──────────────
     guardar_mensaje(telefono_limpio, mensaje, origen="cliente")
 
+    # ── MENU desactiva modo agente y responde normalmente ─────
+    if msg_bajo in ["menu", "menú", "inicio"]:
+        desactivar_modo_agente(telefono_limpio)
+        sesiones[telefono_limpio] = {"paso": "menu"}
+        respuesta_texto = menu_principal()
+        msg.body(respuesta_texto)
+        guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
+        return str(response)
+
     # ── Si está en modo agente, el bot no responde ────────────
     if cliente_en_modo_agente(telefono_limpio):
         print(f"[BOT] Cliente {telefono_limpio} en modo agente — bot silenciado.")
-        # No respondemos nada, el agente humano toma el control
         msg.body("")
         return str(response)
 
@@ -282,7 +294,6 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
 
     sesion = sesiones[telefono_limpio]
     paso   = sesion.get("paso", "menu")
-
     respuesta_texto = ""
 
     # ── Interceptor pedido web ────────────────────────────────
@@ -315,9 +326,6 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                 guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
                 return str(response)
 
-            total_estimado = sum(
-                float(it.get("precio", 0)) for it in items
-            )
             with Session(engine) as db:
                 total_estimado = 0.0
                 for item in items:
@@ -352,9 +360,9 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
         return str(response)
 
-    # ── Reset al menú ─────────────────────────────────────────
-    if msg_bajo in ["hola", "inicio", "menu", "menú", "cancelar",
-                    "buenos días", "buenas tardes", "buenas noches", "buenas"]:
+    # ── Reset con hola/cancelar ───────────────────────────────
+    if msg_bajo in ["hola", "cancelar", "buenos días", "buenas tardes",
+                    "buenas noches", "buenas"]:
         sesiones[telefono_limpio] = {"paso": "menu"}
         respuesta_texto = menu_principal()
         msg.body(respuesta_texto)
@@ -363,7 +371,6 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
 
     # ── MENÚ PRINCIPAL ────────────────────────────────────────
     if paso == "menu":
-
         if mensaje == "1":
             respuesta_texto = generar_url_catalogo(telefono_limpio, "ver")
 
@@ -387,7 +394,6 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                 respuesta_texto = generar_url_catalogo(telefono_limpio, "pedido")
 
         elif mensaje == "3":
-            # Activar modo agente — el bot deja de responder
             activar_modo_agente(telefono_limpio)
             sesiones[telefono_limpio] = {"paso": "menu"}
             respuesta_texto = (
@@ -397,7 +403,6 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                 "⏰ Horario: Lunes a Domingo 9:00 AM - 11:00 PM\n\n"
                 "Escribe *MENU* si deseas volver al bot."
             )
-
         else:
             respuesta_texto = "🤔 Opción no válida.\n\n" + menu_principal()
 

@@ -1,27 +1,23 @@
 # app/componentes/panel_whatsapp.py
 """
 Panel de atención de WhatsApp para el administrador.
-Permite monitorear conversaciones, ver historial y responder
-directamente desde el dashboard usando la API de Twilio.
 """
 import asyncio
+import traceback
 from datetime import datetime, timezone
 import flet as ft
 import httpx
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 from database import engine
 import models
-
-# ── Credenciales Twilio ───────────────────────────────────────
-# Estas van en el .env — las leemos con os.getenv
 import os
+
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "whatsapp:+14155238886")
 
 
 def enviar_mensaje_twilio(telefono: str, mensaje: str) -> bool:
-    """Envía un mensaje de WhatsApp usando la API REST de Twilio."""
     try:
         url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
         data = {
@@ -34,63 +30,18 @@ def enviar_mensaje_twilio(telefono: str, mensaje: str) -> bool:
             auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
             timeout=10,
         )
+        print(f"[TWILIO] Status: {response.status_code} | {response.text[:100]}")
         return response.status_code == 201
     except Exception as e:
         print(f"[TWILIO ERROR] {e}")
         return False
 
 
-def guardar_mensaje_agente(telefono: str, mensaje: str):
-    """Guarda el mensaje del agente en el historial."""
-    try:
-        with Session(engine) as db:
-            cliente = db.query(models.Cliente).filter(
-                models.Cliente.telefono == telefono
-            ).first()
-            nuevo = models.MensajeWhatsapp(
-                telefono=telefono,
-                cliente_id=cliente.id if cliente else None,
-                mensaje=mensaje,
-                origen="agente",
-            )
-            db.add(nuevo)
-            if cliente:
-                cliente.ultimo_mensaje = datetime.now(timezone.utc)
-            db.commit()
-    except Exception as e:
-        print(f"[ERROR guardar_mensaje_agente] {e}")
-
-
-def desactivar_modo_agente(telefono: str):
-    """Devuelve el control al bot."""
-    try:
-        with Session(engine) as db:
-            c = db.query(models.Cliente).filter(
-                models.Cliente.telefono == telefono
-            ).first()
-            if c:
-                c.modo_agente = False
-                db.commit()
-    except Exception as e:
-        print(f"[ERROR desactivar_modo_agente] {e}")
-
-
 def build_panel_whatsapp(page: ft.Page, run_db):
-    """
-    Construye el panel de WhatsApp para el administrador.
-    Retorna (panel, refrescar_panel)
-    """
-    # ── Estado interno ────────────────────────────────────────
-    _conversaciones    = []
-    _telefono_activo   = {"tel": None, "nombre": None}
+    _telefono_activo = {"tel": None, "nombre": None}
 
-    # ── Componentes UI ────────────────────────────────────────
     lista_conv_ui  = ft.Column(spacing=6, scroll=ft.ScrollMode.ADAPTIVE)
     col_chat_ui    = ft.Column(spacing=8, scroll=ft.ScrollMode.ADAPTIVE, expand=True)
-    txt_sin_chat   = ft.Text(
-        "Selecciona una conversación para ver el historial",
-        color="grey", italic=True, size=13
-    )
     inp_respuesta  = ft.TextField(
         hint_text="Escribe tu respuesta al cliente...",
         multiline=True, min_lines=2, max_lines=4,
@@ -98,22 +49,20 @@ def build_panel_whatsapp(page: ft.Page, run_db):
         border_color="#232629", expand=True,
     )
     txt_estado_env = ft.Text("", color="green", size=12)
-    header_chat    = ft.Text("", size=16, weight="bold", color="white")
+    header_chat    = ft.Text("Selecciona una conversación", size=15,
+                             weight="bold", color="grey")
     badge_modo     = ft.Container(visible=False)
     btn_devolver   = ft.ElevatedButton(
-        "Devolver al Bot",
-        icon=ft.icons.SMART_TOY,
-        bgcolor="#333",
-        color="white",
-        height=34,
-        visible=False,
+        "Devolver al Bot", icon=ft.icons.SMART_TOY,
+        bgcolor="#333", color="white", height=34, visible=False,
     )
 
-    # ── Cargar historial de una conversacion ──────────────────
+    # ── Cargar historial ──────────────────────────────────────
     async def cargar_chat(telefono: str, nombre: str):
         _telefono_activo["tel"]    = telefono
         _telefono_activo["nombre"] = nombre
         header_chat.value = f"💬 {nombre} — {telefono}"
+        header_chat.color = "white"
 
         try:
             mensajes = await run_db(lambda db: (
@@ -124,24 +73,22 @@ def build_panel_whatsapp(page: ft.Page, run_db):
             ))
 
             # Marcar como leidos
-            await run_db(lambda db: (
-                db.query(models.MensajeWhatsapp)
-                .filter(
+            def _marcar_leidos(db):
+                db.query(models.MensajeWhatsapp).filter(
                     models.MensajeWhatsapp.telefono == telefono,
                     models.MensajeWhatsapp.leido == False,
-                )
-                .update({"leido": True})
-            ))
+                ).update({"leido": True})
+                db.commit()
 
-            # Verificar si está en modo agente
+            await run_db(_marcar_leidos)
+
             cliente = await run_db(lambda db: (
                 db.query(models.Cliente)
                 .filter(models.Cliente.telefono == telefono)
                 .first()
             ))
-            en_modo_agente = cliente.modo_agente if cliente else False
-
-            badge_modo.visible = en_modo_agente
+            en_modo_agente       = cliente.modo_agente if cliente else False
+            badge_modo.visible   = en_modo_agente
             btn_devolver.visible = en_modo_agente
 
             col_chat_ui.controls.clear()
@@ -152,14 +99,13 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                 )
             else:
                 for m in mensajes:
-                    es_cliente = m.origen == "cliente"
-                    es_bot     = m.origen == "bot"
-                    es_agente  = m.origen == "agente"
+                    es_agente = m.origen == "agente"
+                    es_bot    = m.origen == "bot"
 
                     color_bg   = "#1a2a1a" if es_agente else ("#1a1f26" if es_bot else "#16191c")
-                    alineacion = ft.MainAxisAlignment.END if (es_agente) else ft.MainAxisAlignment.START
-                    color_txt  = "#66bb6a" if es_agente else ("#2196f3" if es_bot else "white")
-                    label      = "Tú (agente)" if es_agente else ("🤖 Bot" if es_bot else "Cliente")
+                    alineacion = ft.MainAxisAlignment.END if es_agente else ft.MainAxisAlignment.START
+                    color_label = "#66bb6a" if es_agente else ("#2196f3" if es_bot else "#fbbf24")
+                    label       = "Tú (agente)" if es_agente else ("🤖 Bot" if es_bot else "Cliente")
 
                     fecha_str = ""
                     if m.fecha:
@@ -173,7 +119,8 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                             ft.Container(
                                 content=ft.Column([
                                     ft.Row([
-                                        ft.Text(label, size=10, color=color_txt, weight="bold"),
+                                        ft.Text(label, size=10,
+                                                color=color_label, weight="bold"),
                                         ft.Text(fecha_str, size=10, color="#555"),
                                     ], spacing=8),
                                     ft.Text(m.mensaje, size=13, color="white",
@@ -182,7 +129,7 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                                 bgcolor=color_bg,
                                 border_radius=10,
                                 padding=ft.padding.symmetric(horizontal=12, vertical=8),
-                                max_width=380,
+                                max_width=400,
                             )
                         ], alignment=alineacion)
                     )
@@ -192,12 +139,12 @@ def build_panel_whatsapp(page: ft.Page, run_db):
 
         except Exception as ex:
             print(f"[CHAT ERROR] {ex}")
+            traceback.print_exc()
 
-    # ── Enviar respuesta al cliente ───────────────────────────
+    # ── Enviar respuesta ──────────────────────────────────────
     async def enviar_respuesta(e):
         telefono = _telefono_activo["tel"]
         mensaje  = inp_respuesta.value.strip()
-
         if not telefono or not mensaje:
             return
 
@@ -205,42 +152,35 @@ def build_panel_whatsapp(page: ft.Page, run_db):
         txt_estado_env.color = "grey"
         await page.update_async()
 
-        # Enviar via Twilio en hilo separado
-        def _enviar():
-            return enviar_mensaje_twilio(telefono, mensaje)
-
-        ok = await asyncio.to_thread(_enviar)
+        ok = await asyncio.to_thread(enviar_mensaje_twilio, telefono, mensaje)
 
         if ok:
-            # Guardar en historial
             def _guardar(db):
                 cliente = db.query(models.Cliente).filter(
                     models.Cliente.telefono == telefono
                 ).first()
-                nuevo = models.MensajeWhatsapp(
+                db.add(models.MensajeWhatsapp(
                     telefono=telefono,
                     cliente_id=cliente.id if cliente else None,
                     mensaje=mensaje,
                     origen="agente",
                     leido=True,
-                )
-                db.add(nuevo)
+                ))
                 if cliente:
                     cliente.ultimo_mensaje = datetime.now(timezone.utc)
                 db.commit()
 
             await run_db(_guardar)
-            inp_respuesta.value = ""
+            inp_respuesta.value  = ""
             txt_estado_env.value = "✅ Mensaje enviado"
             txt_estado_env.color = "green"
             await cargar_chat(telefono, _telefono_activo["nombre"])
         else:
-            txt_estado_env.value = "❌ Error al enviar. Verifica credenciales Twilio."
+            txt_estado_env.value = "❌ Error al enviar. Verifica credenciales Twilio en .env"
             txt_estado_env.color = "red"
-
         await page.update_async()
 
-    # ── Devolver control al bot ───────────────────────────────
+    # ── Devolver al bot ───────────────────────────────────────
     async def devolver_al_bot(e):
         telefono = _telefono_activo["tel"]
         if not telefono:
@@ -255,17 +195,11 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                 db.commit()
 
         await run_db(_desactivar)
-
-        # Notificar al cliente
-        def _notificar():
-            enviar_mensaje_twilio(
-                telefono,
-                "✅ Has sido reconectado con el bot de Smart-Liquor.\n\n"
-                "Escribe *MENU* para ver las opciones disponibles."
-            )
-
-        await asyncio.to_thread(_notificar)
-
+        await asyncio.to_thread(
+            enviar_mensaje_twilio, telefono,
+            "✅ Has sido reconectado con el bot de Smart-Liquor.\n\n"
+            "Escribe *MENU* para ver las opciones disponibles."
+        )
         txt_estado_env.value = "✅ Cliente devuelto al bot"
         txt_estado_env.color = "green"
         badge_modo.visible   = False
@@ -274,22 +208,25 @@ def build_panel_whatsapp(page: ft.Page, run_db):
 
     btn_devolver.on_click = devolver_al_bot
 
-    # ── Construir lista de conversaciones ─────────────────────
+    # ── Lista de conversaciones ───────────────────────────────
     async def refrescar_lista():
         try:
-            clientes = await run_db(lambda db: (
-                db.query(models.Cliente)
-                .join(models.MensajeWhatsapp,
-                      models.Cliente.telefono == models.MensajeWhatsapp.telefono)
-                .options(joinedload(models.Cliente.mensajes))
-                .order_by(models.Cliente.ultimo_mensaje.desc().nullslast())
-                .distinct()
+            mensajes = await run_db(lambda db: (
+                db.query(models.MensajeWhatsapp)
+                .order_by(models.MensajeWhatsapp.fecha.desc())
                 .all()
             ))
 
+            # Agrupar por telefono manteniendo orden
+            conversaciones = {}
+            for m in mensajes:
+                if m.telefono not in conversaciones:
+                    conversaciones[m.telefono] = []
+                conversaciones[m.telefono].append(m)
+
             lista_conv_ui.controls.clear()
 
-            if not clientes:
+            if not conversaciones:
                 lista_conv_ui.controls.append(
                     ft.Text("Sin conversaciones aún.", color="grey",
                             italic=True, size=12)
@@ -297,17 +234,24 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                 await page.update_async()
                 return
 
-            for c in clientes:
-                tel      = c.telefono
-                nombre   = c.nombre_completo or tel
-                no_leidos = sum(
-                    1 for m in c.mensajes
-                    if not m.leido and m.origen == "cliente"
-                )
-                es_activo    = _telefono_activo["tel"] == tel
-                requiere_agente = c.modo_agente
+            for tel, msgs in conversaciones.items():
+                cliente = await run_db(lambda db, t=tel: (
+                    db.query(models.Cliente)
+                    .filter(models.Cliente.telefono == t)
+                    .first()
+                ))
+                nombre          = (cliente.nombre_completo if cliente else tel) or tel
+                no_leidos       = sum(1 for m in msgs if not m.leido and m.origen == "cliente")
+                es_activo       = _telefono_activo["tel"] == tel
+                requiere_agente = cliente.modo_agente if cliente else False
 
-                # Badge de no leídos
+                ultimo_msg = ""
+                if msgs:
+                    ult = msgs[0]
+                    ultimo_msg = (ult.mensaje[:35] + "...") if len(ult.mensaje) > 35 else ult.mensaje
+
+                tel_limpio = tel.replace("whatsapp:", "")
+
                 badge_nl = ft.Container(
                     content=ft.Text(str(no_leidos), size=10,
                                     color="white", weight="bold"),
@@ -315,8 +259,6 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                     padding=ft.padding.symmetric(horizontal=5, vertical=2),
                     visible=no_leidos > 0,
                 )
-
-                # Badge modo agente
                 badge_agente = ft.Container(
                     content=ft.Text("AGENTE", size=9,
                                     color="#ff9800", weight="bold"),
@@ -327,24 +269,12 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                     visible=requiere_agente,
                 )
 
-                ultimo_msg = ""
-                if c.mensajes:
-                    msgs_ord = sorted(c.mensajes, key=lambda m: m.fecha or datetime.min)
-                    if msgs_ord:
-                        ult = msgs_ord[-1]
-                        ultimo_msg = (ult.mensaje[:35] + "...") if len(ult.mensaje) > 35 else ult.mensaje
-
-                tel_limpio = tel.replace("whatsapp:", "")
-
                 fila = ft.Container(
                     content=ft.Row([
-                        ft.Container(
-                            content=ft.Icon(
-                                ft.icons.ACCOUNT_CIRCLE,
-                                color="#25D366" if requiere_agente else "#2196f3",
-                                size=32,
-                            ),
-                            padding=4,
+                        ft.Icon(
+                            ft.icons.ACCOUNT_CIRCLE,
+                            color="#25D366" if requiere_agente else "#2196f3",
+                            size=32,
                         ),
                         ft.Column([
                             ft.Row([
@@ -358,10 +288,10 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                             ft.Text(ultimo_msg, size=11, color="#555",
                                     overflow=ft.TextOverflow.ELLIPSIS),
                         ], expand=True, spacing=2),
-                    ], spacing=8, vertical_alignment="center"),
+                    ], spacing=10, vertical_alignment="center"),
                     bgcolor="#1a1f26" if es_activo else "#111416",
                     border_radius=10,
-                    padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                    padding=ft.padding.symmetric(horizontal=12, vertical=10),
                     border=ft.border.all(1, "#2196f3" if es_activo else "#1a1d20"),
                     on_click=lambda e, t=tel, n=nombre: asyncio.ensure_future(
                         cargar_chat(t, n)
@@ -370,12 +300,13 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                 lista_conv_ui.controls.append(fila)
 
             await page.update_async()
+
         except Exception as ex:
             print(f"[LISTA CONV ERROR] {ex}")
+            traceback.print_exc()
 
     async def refrescar_panel():
         await refrescar_lista()
-        # Si hay chat activo, recargar mensajes nuevos
         if _telefono_activo["tel"]:
             await cargar_chat(
                 _telefono_activo["tel"],
@@ -395,10 +326,10 @@ def build_panel_whatsapp(page: ft.Page, run_db):
         padding=ft.padding.symmetric(horizontal=10, vertical=6),
     )
 
-    # ── Layout del panel ──────────────────────────────────────
+    # ── Layout ────────────────────────────────────────────────
     panel = ft.Row([
 
-        # Columna izquierda — lista de conversaciones
+        # Lista de conversaciones
         ft.Container(
             width=280,
             bgcolor="#0f1214",
@@ -407,67 +338,50 @@ def build_panel_whatsapp(page: ft.Page, run_db):
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.icons.CHAT, color="#25D366", size=20),
-                    ft.Text("Conversaciones", size=16,
+                    ft.Text("Conversaciones", size=15,
                             weight="bold", color="white", expand=True),
                     ft.IconButton(
-                        ft.icons.REFRESH,
-                        icon_color="grey", icon_size=16,
+                        ft.icons.REFRESH, icon_color="grey", icon_size=16,
                         tooltip="Actualizar",
                         on_click=lambda e: asyncio.ensure_future(refrescar_lista()),
                     ),
                 ], spacing=8, vertical_alignment="center"),
-                ft.Divider(height=10, color="#1a1d20"),
-                ft.Container(
-                    content=lista_conv_ui,
-                    expand=True,
-                    height=600,
-                ),
-            ], spacing=8),
+                ft.Divider(height=8, color="#1a1d20"),
+                ft.Container(content=lista_conv_ui, expand=True),
+            ], spacing=8, expand=True),
         ),
 
-        # Columna derecha — chat activo
+        # Chat activo
         ft.Container(
             expand=True,
             bgcolor="#0b0d0f",
             padding=ft.padding.all(16),
             content=ft.Column([
-
-                # Header del chat
                 ft.Row([
                     header_chat,
                     badge_modo,
                     btn_devolver,
                 ], spacing=12, vertical_alignment="center"),
-
-                ft.Divider(height=8, color="#1a1d20"),
-
-                # Mensajes
+                ft.Divider(height=6, color="#1a1d20"),
                 ft.Container(
                     content=col_chat_ui,
                     expand=True,
-                    height=480,
                     bgcolor="#0f1214",
                     border_radius=10,
                     padding=12,
                 ),
-
-                ft.Divider(height=8, color="#1a1d20"),
-
-                # Input de respuesta
+                ft.Divider(height=6, color="#1a1d20"),
                 ft.Row([
                     inp_respuesta,
                     ft.IconButton(
                         icon=ft.icons.SEND,
-                        icon_color="#25D366",
-                        icon_size=28,
+                        icon_color="#25D366", icon_size=28,
                         tooltip="Enviar mensaje",
                         on_click=enviar_respuesta,
                         bgcolor="#0f1214",
                     ),
                 ], spacing=8, vertical_alignment="end"),
-
                 txt_estado_env,
-
             ], spacing=8, expand=True),
         ),
 
