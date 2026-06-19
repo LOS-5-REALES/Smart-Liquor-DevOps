@@ -221,9 +221,13 @@ async def main(page: ft.Page):
             logout()
         except Exception:
             pass
-        mostrar_login = page.session.get("mostrar_login") if page.session else None
-        if mostrar_login:
-            await mostrar_login()
+        page.session.set("telefono_cliente_whatsapp", None)
+        page.session.set("modo_catalogo", "admin")
+        page.controls.clear()
+        page.overlay.clear()
+        page.bottom_appbar = None
+        await page.update_async()
+        page.go("/")
 
     tab_index = {"actual": 0}
     contenido_central = ft.Container(
