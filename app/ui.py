@@ -227,6 +227,9 @@ async def main(page: ft.Page):
         page.controls.clear()
         page.overlay.clear()
         page.bottom_appbar = None
+        page.scroll = None          # ← resetear scroll
+        page.padding = 0
+        page.bgcolor = "#0b0d0f"
         print("[CERRAR SESION] Cargando login screen...")
         from componentes.login_screen import build_login_screen
         async def on_login(usuario=None):
