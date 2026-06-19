@@ -134,7 +134,7 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                         ], alignment=alineacion)
                     )
 
-            await page.update_async()
+            page.update()
             await refrescar_lista()
 
         except Exception as ex:
@@ -150,7 +150,7 @@ def build_panel_whatsapp(page: ft.Page, run_db):
 
         txt_estado_env.value = "Enviando..."
         txt_estado_env.color = "grey"
-        await page.update_async()
+        page.update()
 
         ok = await asyncio.to_thread(enviar_mensaje_twilio, telefono, mensaje)
 
@@ -178,7 +178,7 @@ def build_panel_whatsapp(page: ft.Page, run_db):
         else:
             txt_estado_env.value = "❌ Error al enviar. Verifica credenciales Twilio en .env"
             txt_estado_env.color = "red"
-        await page.update_async()
+        page.update()
 
     # ── Devolver al bot ───────────────────────────────────────
     async def devolver_al_bot(e):
@@ -210,7 +210,6 @@ def build_panel_whatsapp(page: ft.Page, run_db):
 
     # ── Lista de conversaciones ───────────────────────────────
     async def refrescar_lista():
-        print("[PANEL] Cargando lista de conversaciones...")
         try:
             mensajes = await run_db(lambda db: (
                 db.query(models.MensajeWhatsapp)
@@ -232,7 +231,7 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                     ft.Text("Sin conversaciones aún.", color="grey",
                             italic=True, size=12)
                 )
-                await page.update_async()
+                page.update()
                 return
 
             for tel, msgs in conversaciones.items():
@@ -300,7 +299,7 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                 )
                 lista_conv_ui.controls.append(fila)
 
-            await page.update_async()
+            page.update()
 
         except Exception as ex:
             print(f"[LISTA CONV ERROR] {ex}")
@@ -387,5 +386,8 @@ def build_panel_whatsapp(page: ft.Page, run_db):
         ),
 
     ], expand=True, spacing=0)
+
+    # Cargar conversaciones al inicializar
+    page.run_task(refrescar_lista)
 
     return panel, refrescar_panel
