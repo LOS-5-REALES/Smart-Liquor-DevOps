@@ -387,4 +387,7 @@ def build_panel_whatsapp(page: ft.Page, run_db):
 
     ], expand=True, spacing=0)
 
+    # Cargar conversaciones al inicializar
+    page.run_task(refrescar_lista)
+
     return panel, refrescar_panel
