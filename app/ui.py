@@ -216,6 +216,7 @@ async def main(page: ft.Page):
         await page.update_async()
 
     async def cerrar_sesion(e=None):
+        print("[CERRAR SESION] Iniciando...")
         try:
             from auth import logout
             logout()
@@ -226,6 +227,7 @@ async def main(page: ft.Page):
         page.controls.clear()
         page.overlay.clear()
         page.bottom_appbar = None
+        print("[CERRAR SESION] Cargando login screen...")
         from componentes.login_screen import build_login_screen
         async def on_login(usuario=None):
             from ui import main as build_dashboard
@@ -234,11 +236,14 @@ async def main(page: ft.Page):
             page.bottom_appbar = None
             page.session.set("telefono_cliente_whatsapp", None)
             page.session.set("modo_catalogo", "admin")
+            page.session.set("mostrar_login", cerrar_sesion)
             await build_dashboard(page)
         page.controls.append(
             build_login_screen(page=page, on_login_exitoso=on_login)
         )
+        print("[CERRAR SESION] Login screen agregado, actualizando...")
         await page.update_async()
+        print("[CERRAR SESION] Done")
 
     tab_index = {"actual": 0}
     contenido_central = ft.Container(
