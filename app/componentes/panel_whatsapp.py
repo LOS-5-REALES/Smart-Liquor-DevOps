@@ -43,8 +43,10 @@ def build_panel_whatsapp(page: ft.Page, run_db):
     inp_respuesta  = ft.TextField(
         hint_text="Escribe tu respuesta al cliente...",
         multiline=True, min_lines=2, max_lines=4,
-        border_radius=10, bgcolor="#111416",
-        border_color="#232629", expand=True,
+        border_radius=ft.border_radius.all(10),
+        bgcolor="#111416",
+        border_color="#232629",
+        expand=True,
     )
     txt_estado_env = ft.Text("", color="green", size=12)
     header_chat    = ft.Text("Selecciona una conversación", size=15,
@@ -100,16 +102,19 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                 tel_limpio = tel.replace("whatsapp:", "")
 
                 badge_nl = ft.Container(
-                    content=ft.Text(str(no_leidos), size=10, color="white", weight="bold"),
-                    bgcolor="red", border_radius=10,
+                    content=ft.Text(str(no_leidos), size=10,
+                                    color="white", weight="bold"),
+                    bgcolor="red",
+                    border_radius=ft.border_radius.all(10),
                     padding=ft.padding.symmetric(horizontal=5, vertical=2),
                     visible=no_leidos > 0,
                 )
                 badge_agente = ft.Container(
-                    content=ft.Text("AGENTE", size=9, color="#ff9800", weight="bold"),
+                    content=ft.Text("AGENTE", size=9,
+                                    color="#ff9800", weight="bold"),
                     bgcolor="#2a1a00",
                     border=ft.border.all(1, "#ff9800"),
-                    border_radius=4,
+                    border_radius=ft.border_radius.all(4),
                     padding=ft.padding.symmetric(horizontal=5, vertical=2),
                     visible=requiere_agente,
                 )
@@ -135,7 +140,7 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                         ], expand=True, spacing=2),
                     ], spacing=10, vertical_alignment="center"),
                     bgcolor="#1a1f26" if es_activo else "#111416",
-                    border_radius=10,
+                    border_radius=ft.border_radius.all(10),
                     padding=ft.padding.symmetric(horizontal=12, vertical=10),
                     border=ft.border.all(1, "#2196f3" if es_activo else "#1a1d20"),
                     on_click=lambda e, t=tel, n=nombre: asyncio.ensure_future(
@@ -211,13 +216,15 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                             ft.Container(
                                 content=ft.Column([
                                     ft.Row([
-                                        ft.Text(label, size=10, color=color_label, weight="bold"),
+                                        ft.Text(label, size=10,
+                                                color=color_label, weight="bold"),
                                         ft.Text(fecha_str, size=10, color="#555"),
                                     ], spacing=8),
-                                    ft.Text(m.mensaje, size=13, color="white", selectable=True),
+                                    ft.Text(m.mensaje, size=13,
+                                            color="white", selectable=True),
                                 ], spacing=3),
                                 bgcolor=color_bg,
-                                border_radius=10,
+                                border_radius=ft.border_radius.all(10),
                                 padding=ft.padding.symmetric(horizontal=12, vertical=8),
                                 max_width=400,
                             )
@@ -307,16 +314,18 @@ def build_panel_whatsapp(page: ft.Page, run_db):
     badge_modo.content = ft.Container(
         content=ft.Row([
             ft.Icon(ft.icons.PERSON, color="#ff9800", size=14),
-            ft.Text("Modo Agente Activo", color="#ff9800", size=12, weight="bold"),
+            ft.Text("Modo Agente Activo", color="#ff9800",
+                    size=12, weight="bold"),
         ], spacing=6),
         bgcolor="#2a1a00",
         border=ft.border.all(1, "#ff9800"),
-        border_radius=6,
+        border_radius=ft.border_radius.all(6),
         padding=ft.padding.symmetric(horizontal=10, vertical=6),
     )
 
     # ── Layout ────────────────────────────────────────────────
     panel = ft.Row([
+        # Lista conversaciones
         ft.Container(
             width=280,
             bgcolor="#0f1214",
@@ -337,6 +346,7 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                 ft.Container(content=lista_conv_ui, expand=True),
             ], spacing=8, expand=True),
         ),
+        # Chat activo
         ft.Container(
             expand=True,
             bgcolor="#0b0d0f",
@@ -347,15 +357,20 @@ def build_panel_whatsapp(page: ft.Page, run_db):
                 ], spacing=12, vertical_alignment="center"),
                 ft.Divider(height=6, color="#1a1d20"),
                 ft.Container(
-                    content=col_chat_ui, expand=True,
-                    bgcolor="#0f1214", border_radius=10, padding=12,
+                    content=col_chat_ui,
+                    expand=True,
+                    bgcolor="#0f1214",
+                    border_radius=ft.border_radius.all(10),
+                    padding=12,
                 ),
                 ft.Divider(height=6, color="#1a1d20"),
                 ft.Row([
                     inp_respuesta,
                     ft.IconButton(
-                        icon=ft.icons.SEND, icon_color="#25D366", icon_size=28,
-                        tooltip="Enviar mensaje", on_click=enviar_respuesta,
+                        icon=ft.icons.SEND,
+                        icon_color="#25D366", icon_size=28,
+                        tooltip="Enviar mensaje",
+                        on_click=enviar_respuesta,
                         bgcolor="#0f1214",
                     ),
                 ], spacing=8, vertical_alignment="end"),
