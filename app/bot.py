@@ -2,25 +2,87 @@
 """
 Motor del Bot de WhatsApp — Smart Liquor
 Flujo: Menú → Registro (si nuevo) → URL Catálogo Web → Confirmación
+Guarda historial de mensajes en mensajes_whatsapp para el panel del agente.
 """
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy import text
+
 import traceback
+from datetime import datetime, timezone
 from twilio.twiml.messaging_response import MessagingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 from database import engine
 import models
 
-sesiones = {}
+sesiones     = {}
 BASE_URL_WEB = "http://57.156.66.168:8000"
 NUMERO_BOT   = "14155238886"
 
 
-# ── Helpers DB ────────────────────────────────────────────────
+# ── Helpers de historial ──────────────────────────────────────
+
+def guardar_mensaje(telefono: str, mensaje: str, origen: str = "cliente"):
+    """
+    Guarda un mensaje en la tabla mensajes_whatsapp.
+    origen: 'cliente', 'bot' o 'agente'
+    """
+    try:
+        with Session(engine) as db:
+            cliente = db.query(models.Cliente).filter(
+                models.Cliente.telefono == telefono
+            ).first()
+
+            nuevo = models.MensajeWhatsapp(
+                telefono=telefono,
+                cliente_id=cliente.id if cliente else None,
+                mensaje=mensaje,
+                origen=origen,
+            )
+            db.add(nuevo)
+
+            # Actualizar ultimo_mensaje del cliente
+            if cliente:
+                cliente.ultimo_mensaje = datetime.now(timezone.utc)
+
+            db.commit()
+    except Exception as e:
+        print(f"[ERROR guardar_mensaje] {e}")
+
+
+def cliente_en_modo_agente(telefono: str) -> bool:
+    """Verifica si el cliente está siendo atendido por un agente humano."""
+    try:
+        with Session(engine) as db:
+            c = db.query(models.Cliente).filter(
+                models.Cliente.telefono == telefono
+            ).first()
+            return c.modo_agente if c else False
+    except Exception:
+        return False
+
+
+def activar_modo_agente(telefono: str):
+    """Activa modo_agente=True para que el bot deje de responder."""
+    try:
+        with Session(engine) as db:
+            c = db.query(models.Cliente).filter(
+                models.Cliente.telefono == telefono
+            ).first()
+            if c:
+                c.modo_agente      = True
+                c.ultimo_mensaje   = datetime.now(timezone.utc)
+                db.commit()
+    except Exception as e:
+        print(f"[ERROR activar_modo_agente] {e}")
+
+
+# ── Helpers de DB ─────────────────────────────────────────────
 
 def verificar_registro_cliente(telefono: str) -> bool:
     with Session(engine) as db:
-        c = db.query(models.Cliente).filter(models.Cliente.telefono == telefono).first()
+        c = db.query(models.Cliente).filter(
+            models.Cliente.telefono == telefono
+        ).first()
         if not c or not c.direccion_exacta or c.nombre_completo == "Cliente WhatsApp":
             return False
         return True
@@ -52,13 +114,16 @@ def registrar_cliente_completo(telefono: str, texto: str) -> bool:
             return False
 
         with Session(engine) as db:
-            c = db.query(models.Cliente).filter(models.Cliente.telefono == telefono).first()
+            c = db.query(models.Cliente).filter(
+                models.Cliente.telefono == telefono
+            ).first()
             if not c:
-                c = models.Cliente(telefono=telefono)
+                c = models.Cliente(telefono=telefono, nombre_completo="Cliente WhatsApp")
                 db.add(c)
-            c.nombre_completo    = nombre
-            c.direccion_exacta   = direccion
+            c.nombre_completo     = nombre
+            c.direccion_exacta    = direccion
             c.referencia_ubicacion = referencia
+            c.ultimo_mensaje      = datetime.now(timezone.utc)
             db.commit()
             return True
     except Exception as e:
@@ -68,10 +133,12 @@ def registrar_cliente_completo(telefono: str, texto: str) -> bool:
 
 
 def registrar_pedidos_multiples(telefono: str, items: list) -> tuple:
+    """Registra un pedido con múltiples productos con auto-reparación de secuencia."""
     try:
         with Session(engine) as db:
             cliente = db.query(models.Cliente).filter(
-                models.Cliente.telefono == telefono).first()
+                models.Cliente.telefono == telefono
+            ).first()
             if not cliente:
                 return False, "Cliente no encontrado."
 
@@ -80,7 +147,8 @@ def registrar_pedidos_multiples(telefono: str, items: list) -> tuple:
 
             for item in items:
                 prod = db.query(models.Producto).filter(
-                    models.Producto.id == item["producto_id"]).first()
+                    models.Producto.id == item["producto_id"]
+                ).first()
                 if not prod:
                     return False, f"Producto ID {item['producto_id']} no encontrado."
                 if (prod.stock_actual or 0) < item["cantidad"]:
@@ -88,9 +156,7 @@ def registrar_pedidos_multiples(telefono: str, items: list) -> tuple:
                 subtotal = float(prod.precio_venta or 0) * item["cantidad"]
                 total_general += subtotal
                 detalles_confirmados.append({
-                    "prod": prod,
-                    "cantidad": item["cantidad"],
-                    "subtotal": subtotal
+                    "prod": prod, "cantidad": item["cantidad"], "subtotal": subtotal
                 })
 
             nuevo_pedido = models.Pedido(
@@ -138,6 +204,8 @@ def registrar_pedidos_multiples(telefono: str, items: list) -> tuple:
         return False, "Error interno del servidor."
 
 
+# ── Textos ────────────────────────────────────────────────────
+
 def menu_principal() -> str:
     return (
         "👋 *¡Bienvenido a Smart-Liquor!* 🍷\n"
@@ -154,7 +222,8 @@ def nombre_cliente_corto(telefono: str) -> str:
     try:
         with Session(engine) as db:
             c = db.query(models.Cliente).filter(
-                models.Cliente.telefono == telefono).first()
+                models.Cliente.telefono == telefono
+            ).first()
             if c and c.nombre_completo and c.nombre_completo != "Cliente WhatsApp":
                 return c.nombre_completo.split()[0].upper()
     except Exception:
@@ -182,7 +251,7 @@ def generar_url_catalogo(telefono: str, modo: str) -> str:
             "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             "Explora todos nuestros productos y precios:\n\n"
             f"👉 {url}\n\n"
-            "💡 Este enlace es solo de lectura. Para comprar elige la opción *2* en el menú."
+            "💡 Este enlace es solo de lectura. Para comprar elige la opción *2*."
         )
 
 
@@ -198,13 +267,25 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
     if not telefono_limpio:
         telefono_limpio = "default"
 
+    # ── Guardar mensaje del cliente en historial ──────────────
+    guardar_mensaje(telefono_limpio, mensaje, origen="cliente")
+
+    # ── Si está en modo agente, el bot no responde ────────────
+    if cliente_en_modo_agente(telefono_limpio):
+        print(f"[BOT] Cliente {telefono_limpio} en modo agente — bot silenciado.")
+        # No respondemos nada, el agente humano toma el control
+        msg.body("")
+        return str(response)
+
     if telefono_limpio not in sesiones:
         sesiones[telefono_limpio] = {"paso": "menu"}
 
     sesion = sesiones[telefono_limpio]
     paso   = sesion.get("paso", "menu")
 
-    # ── Interceptor pedido web (viene de la interfaz del cliente) ──
+    respuesta_texto = ""
+
+    # ── Interceptor pedido web ────────────────────────────────
     if "PEDIDO_WEB:" in mensaje:
         try:
             lineas = [l.strip() for l in mensaje.split("\n") if "PEDIDO_WEB:" in l]
@@ -212,14 +293,15 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             resumen_lines = []
 
             for linea in lineas:
-                datos = linea.replace("PEDIDO_WEB:", "").strip()
-                partes = datos.split("|")
+                datos    = linea.replace("PEDIDO_WEB:", "").strip()
+                partes   = datos.split("|")
                 prod_id  = int(partes[0].split("=")[1])
                 cantidad = int(partes[1].split("=")[1])
 
                 with Session(engine) as db:
                     prod = db.query(models.Producto).filter(
-                        models.Producto.id == prod_id).first()
+                        models.Producto.id == prod_id
+                    ).first()
                     if prod:
                         items.append({"producto_id": prod_id, "cantidad": cantidad})
                         subtotal = float(prod.precio_venta or 0) * cantidad
@@ -228,55 +310,67 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                         )
 
             if not items:
-                msg.body("⚠️ No se encontraron productos válidos. Escribe *MENU* para reintentar.")
+                respuesta_texto = "⚠️ No se encontraron productos válidos. Escribe *MENU* para reintentar."
+                msg.body(respuesta_texto)
+                guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
                 return str(response)
 
-            total_estimado = 0.0
+            total_estimado = sum(
+                float(it.get("precio", 0)) for it in items
+            )
             with Session(engine) as db:
+                total_estimado = 0.0
                 for item in items:
                     p = db.query(models.Producto).filter(
-                        models.Producto.id == item["producto_id"]).first()
+                        models.Producto.id == item["producto_id"]
+                    ).first()
                     if p:
                         total_estimado += float(p.precio_venta or 0) * item["cantidad"]
 
             sesiones[telefono_limpio] = {
-                "paso":   "confirmando_multi",
-                "items":  items,
+                "paso":    "confirmando_multi",
+                "items":   items,
                 "resumen": resumen_lines,
-                "total":  total_estimado
+                "total":   total_estimado,
             }
 
-            resumen_txt = "\n".join(resumen_lines)
-            msg.body(
+            resumen_txt     = "\n".join(resumen_lines)
+            respuesta_texto = (
                 f"📦 *Resumen de tu pedido:*\n\n"
                 f"{resumen_txt}\n\n"
                 f"💰 *Total: S/ {total_estimado:.2f}*\n\n"
                 "¿Confirmamos el envío a tu dirección registrada?\n"
                 "👉 Responde *SI* para confirmar o *NO* para cancelar."
             )
+            msg.body(respuesta_texto)
+            guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
         except Exception as e:
             print(f"[ERROR PEDIDO WEB] {e}")
             traceback.print_exc()
-            msg.body("⚠️ Error al procesar tu carrito. Escribe *MENU* para reintentar.")
+            respuesta_texto = "⚠️ Error al procesar tu carrito. Escribe *MENU* para reintentar."
+            msg.body(respuesta_texto)
+            guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
         return str(response)
 
     # ── Reset al menú ─────────────────────────────────────────
     if msg_bajo in ["hola", "inicio", "menu", "menú", "cancelar",
                     "buenos días", "buenas tardes", "buenas noches", "buenas"]:
         sesiones[telefono_limpio] = {"paso": "menu"}
-        msg.body(menu_principal())
+        respuesta_texto = menu_principal()
+        msg.body(respuesta_texto)
+        guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
         return str(response)
 
     # ── MENÚ PRINCIPAL ────────────────────────────────────────
     if paso == "menu":
 
         if mensaje == "1":
-            msg.body(generar_url_catalogo(telefono_limpio, "ver"))
+            respuesta_texto = generar_url_catalogo(telefono_limpio, "ver")
 
         elif mensaje == "2":
             if not verificar_registro_cliente(telefono_limpio):
-                sesion["paso"] = "esperando_registro"
-                msg.body(
+                sesion["paso"]  = "esperando_registro"
+                respuesta_texto = (
                     "✨ *¡Estás a un paso de tu pedido!*\n"
                     "━━━━━━━━━━━━━━━━━━━━━━━━\n"
                     "Para entregarte tus pedidos necesitamos tus datos.\n"
@@ -290,34 +384,41 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     "Referencia: Frente a la plaza, portón marrón"
                 )
             else:
-                msg.body(generar_url_catalogo(telefono_limpio, "pedido"))
+                respuesta_texto = generar_url_catalogo(telefono_limpio, "pedido")
 
         elif mensaje == "3":
+            # Activar modo agente — el bot deja de responder
+            activar_modo_agente(telefono_limpio)
             sesiones[telefono_limpio] = {"paso": "menu"}
-            msg.body(
-                "👨‍💼 *Contacto con Agente Smart-Liquor*\n\n"
-                "Un administrador se pondrá en contacto contigo "
-                "a la brevedad para coordinar tu entrega y pago.\n\n"
-                "⏰ Atención: Lunes a Domingo 9:00 AM - 11:00 PM\n\n"
-                "Escribe *MENU* si deseas seguir usando el bot."
+            respuesta_texto = (
+                "👨‍💼 *Conectando con un agente...*\n\n"
+                "Un administrador de Smart-Liquor se pondrá en contacto "
+                "contigo en breve para atenderte personalmente.\n\n"
+                "⏰ Horario: Lunes a Domingo 9:00 AM - 11:00 PM\n\n"
+                "Escribe *MENU* si deseas volver al bot."
             )
 
         else:
-            msg.body("🤔 Opción no válida.\n\n" + menu_principal())
+            respuesta_texto = "🤔 Opción no válida.\n\n" + menu_principal()
+
+        msg.body(respuesta_texto)
+        guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
 
     # ── REGISTRO NUEVO CLIENTE ────────────────────────────────
     elif paso == "esperando_registro":
         exito = registrar_cliente_completo(telefono_limpio, mensaje)
         if exito:
-            msg.body(generar_url_catalogo(telefono_limpio, "pedido"))
+            respuesta_texto = generar_url_catalogo(telefono_limpio, "pedido")
         else:
-            msg.body(
+            respuesta_texto = (
                 "⚠️ *No pudimos leer tus datos.*\n\n"
                 "Asegúrate de usar exactamente este formato:\n\n"
                 "Nombre: Tu Nombre\n"
                 "Dirección: Tu Dirección\n"
                 "Referencia: Tu Referencia"
             )
+        msg.body(respuesta_texto)
+        guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
 
     # ── CONFIRMACIÓN MULTI-PRODUCTO ───────────────────────────
     elif paso == "confirmando_multi":
@@ -328,8 +429,8 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
             sesiones[telefono_limpio] = {"paso": "menu"}
 
             if ok:
-                resumen_txt = "\n".join(resumen)
-                msg.body(
+                resumen_txt     = "\n".join(resumen)
+                respuesta_texto = (
                     f"✅ *¡Pedido registrado con éxito!* 🎉\n\n"
                     f"{resumen_txt}\n\n"
                     f"💰 Total: S/ {float(resultado):.2f}\n\n"
@@ -338,36 +439,43 @@ def procesar_mensaje(cuerpo_mensaje: str, telefono: str = "default") -> str:
                     "Escribe *MENU* para hacer otro pedido."
                 )
             else:
-                msg.body(
+                respuesta_texto = (
                     f"⚠️ No se pudo completar: {resultado}\n\n"
                     "Escribe *MENU* para reintentar."
                 )
 
         elif msg_bajo in ["no", "cancelar"]:
             sesiones[telefono_limpio] = {"paso": "menu"}
-            msg.body("❌ Pedido cancelado.\n\n" + menu_principal())
+            respuesta_texto = "❌ Pedido cancelado.\n\n" + menu_principal()
 
         else:
-            resumen = sesion.get("resumen", [])
-            total   = sesion.get("total", 0)
+            resumen     = sesion.get("resumen", [])
+            total       = sesion.get("total", 0)
             resumen_txt = "\n".join(resumen)
-            msg.body(
+            respuesta_texto = (
                 f"📦 Tu pedido pendiente:\n{resumen_txt}\n"
                 f"💰 Total: S/ {total:.2f}\n\n"
                 "👉 Responde *SI* para confirmar o *NO* para cancelar."
             )
 
+        msg.body(respuesta_texto)
+        guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
+
     # ── ESPERANDO RETORNO DEL CATÁLOGO WEB ───────────────────
     elif paso == "esperando_carrito_web":
-        msg.body(
+        respuesta_texto = (
             "⏳ Aún no hemos recibido tu selección desde el catálogo.\n\n"
             "Por favor abre el enlace que te enviamos, selecciona "
             "tus productos y presiona *Confirmar Pedido* en la web.\n\n"
             "Escribe *MENU* si deseas cancelar."
         )
+        msg.body(respuesta_texto)
+        guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
 
     else:
         sesiones[telefono_limpio] = {"paso": "menu"}
-        msg.body(menu_principal())
+        respuesta_texto = menu_principal()
+        msg.body(respuesta_texto)
+        guardar_mensaje(telefono_limpio, respuesta_texto, origen="bot")
 
     return str(response)
