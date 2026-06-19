@@ -229,7 +229,7 @@ async def main(page: ft.Page):
             await mostrar_login()
 
     tab_index = {"actual": 0}
-    contenido_central = ft.Container(padding=ft.padding.all(20), expand=True)
+    contenido_central = ft.Container(expand=True)
 
     def vista_pedidos():
         return ft.Column([
@@ -277,8 +277,12 @@ async def main(page: ft.Page):
                 ft.Icon(ft.icons.CHAT, color="#25D366", size=22),
                 ft.Text("Panel WhatsApp", size=22, weight="bold", color="white"),
             ], spacing=10),
-            ft.Container(height=8),
-            panel_whatsapp,
+            ft.Divider(height=8, color="#1a1d20"),
+            ft.Container(
+                content=panel_whatsapp,
+                expand=True,
+                height=600,  # ← altura fija para forzar render
+            ),
         ], expand=True)
 
     vistas = [vista_pedidos, vista_inventario, vista_clientes, vista_whatsapp]
