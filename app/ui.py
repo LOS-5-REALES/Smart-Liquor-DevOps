@@ -272,6 +272,7 @@ async def main(page: ft.Page):
         ], expand=True)
 
     def vista_whatsapp():
+        page.run_task(refrescar_whatsapp)
         return ft.Column([
             ft.Row([
                 ft.Icon(ft.icons.CHAT, color="#25D366", size=22),

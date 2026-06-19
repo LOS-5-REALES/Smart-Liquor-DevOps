@@ -210,6 +210,7 @@ def build_panel_whatsapp(page: ft.Page, run_db):
 
     # ── Lista de conversaciones ───────────────────────────────
     async def refrescar_lista():
+        print("[PANEL] Cargando lista de conversaciones...")
         try:
             mensajes = await run_db(lambda db: (
                 db.query(models.MensajeWhatsapp)
@@ -386,8 +387,5 @@ def build_panel_whatsapp(page: ft.Page, run_db):
         ),
 
     ], expand=True, spacing=0)
-
-    # Cargar conversaciones al inicializar
-    page.run_task(refrescar_lista)
 
     return panel, refrescar_panel
