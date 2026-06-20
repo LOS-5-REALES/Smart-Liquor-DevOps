@@ -427,7 +427,11 @@ async def whatsapp_main(page: ft.Page):
     page.controls.clear()
     page.controls.extend([
         header,
-        ft.Container(content=layout, expand=True),
+        ft.Container(
+            content=layout,
+            expand=True,
+            height=page.height - 70 if page.height else 700,  # ← altura calculada
+        ),
     ])
     await asyncio.sleep(0.1)
     await page.update_async()
