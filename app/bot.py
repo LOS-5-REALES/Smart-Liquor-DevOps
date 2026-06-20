@@ -247,7 +247,9 @@ def generar_url_catalogo(telefono: str, modo: str) -> str:
             "Elige tus productos en el catálogo, ajusta las cantidades "
             "y presiona *Confirmar Pedido*. Luego vuelves aquí para finalizar:\n\n"
             f"⬇️ Toca el enlace:\n"
+            f"\n"
             f"{url}\n\n"
+            f"\n"
             "💡 Al confirmar en la web, recibirás un resumen aquí para aprobarlo."
         )
     else:
@@ -256,7 +258,9 @@ def generar_url_catalogo(telefono: str, modo: str) -> str:
             "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             "Explora todos nuestros productos y precios:\n\n"
             f"⬇️ Toca el enlace:\n"
+            f"\n"
             f"{url}\n\n"
+            f"\n"
             "💡 Este enlace es solo de lectura. Para comprar elige la opción *2*."
         )
 
