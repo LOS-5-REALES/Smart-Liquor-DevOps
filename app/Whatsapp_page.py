@@ -95,7 +95,7 @@ async def whatsapp_main(page: ft.Page):
                     ft.Text("Sin conversaciones aún.", color="grey",
                             italic=True, size=12)
                 )
-                await page.update_async()
+                page.update()
                 return
 
             for tel, msgs in conversaciones.items():
@@ -165,7 +165,7 @@ async def whatsapp_main(page: ft.Page):
                 lista_conv_ui.controls.append(fila)
 
             print(f"[WHATSAPP PAGE] {len(conversaciones)} conversacion(es) cargadas")
-            await page.update_async()
+            page.update()
 
         except Exception as ex:
             print(f"[WHATSAPP PAGE ERROR] {ex}")
@@ -251,7 +251,7 @@ async def whatsapp_main(page: ft.Page):
                         ], alignment=alineacion)
                     )
 
-            await page.update_async()
+            page.update()
             await refrescar_lista()
 
         except Exception as ex:
@@ -266,7 +266,7 @@ async def whatsapp_main(page: ft.Page):
             return
         txt_estado_env.value = "Enviando..."
         txt_estado_env.color = "grey"
-        await page.update_async()
+        page.update()
 
         ok = await asyncio.to_thread(enviar_mensaje_twilio, telefono, mensaje)
 
@@ -294,7 +294,7 @@ async def whatsapp_main(page: ft.Page):
         else:
             txt_estado_env.value = "❌ Error al enviar. Verifica credenciales Twilio."
             txt_estado_env.color = "red"
-        await page.update_async()
+        page.update()
 
     # ── Devolver al bot ───────────────────────────────────────
     async def devolver_al_bot(e):
@@ -424,5 +424,5 @@ async def whatsapp_main(page: ft.Page):
         header,
         ft.Container(content=layout, expand=True),
     ])
-    await page.update_async()
+    page.update()
     await refrescar_lista()
