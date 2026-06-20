@@ -55,7 +55,6 @@ async def whatsapp_main(page: ft.Page):
 
     _telefono_activo = {"tel": None, "nombre": None}
 
-    # ── Componentes UI ────────────────────────────────────────
     lista_conv_ui  = ft.Column(spacing=6, scroll=ft.ScrollMode.ADAPTIVE)
     col_chat_ui    = ft.Column(spacing=8, scroll=ft.ScrollMode.ADAPTIVE, expand=True)
     inp_respuesta  = ft.TextField(
@@ -66,7 +65,7 @@ async def whatsapp_main(page: ft.Page):
     )
     txt_estado_env = ft.Text("", color="green", size=12)
     header_chat    = ft.Text("Selecciona una conversación",
-                              size=15, weight="bold", color="grey")
+                             size=15, weight="bold", color="grey")
     badge_modo     = ft.Container(visible=False)
     btn_devolver   = ft.ElevatedButton(
         "Devolver al Bot", icon=ft.icons.SMART_TOY,
@@ -160,11 +159,8 @@ async def whatsapp_main(page: ft.Page):
                     bgcolor="#1a1f26" if es_activo else "#111416",
                     border_radius=ft.border_radius.all(10),
                     padding=ft.padding.symmetric(horizontal=12, vertical=10),
-                    border=ft.border.all(
-                        1, "#2196f3" if es_activo else "#1a1d20"),
-                    on_click=lambda e, t=tel, n=nombre: asyncio.ensure_future(
-                        cargar_chat(t, n)
-                    ),
+                    border=ft.border.all(1, "#2196f3" if es_activo else "#1a1d20"),
+                    on_click=lambda e, t=tel, n=nombre: page.run_task(cargar_chat, t, n),
                 )
                 lista_conv_ui.controls.append(fila)
 
@@ -241,8 +237,7 @@ async def whatsapp_main(page: ft.Page):
                                         ft.Text(label, size=10,
                                                 color=color_label,
                                                 weight="bold"),
-                                        ft.Text(fecha_str, size=10,
-                                                color="#555"),
+                                        ft.Text(fecha_str, size=10, color="#555"),
                                     ], spacing=8),
                                     ft.Text(m.mensaje, size=13,
                                             color="white", selectable=True),
@@ -357,20 +352,21 @@ async def whatsapp_main(page: ft.Page):
                 ft.IconButton(
                     ft.icons.REFRESH, icon_color="white", icon_size=20,
                     tooltip="Actualizar conversaciones",
-                    on_click=lambda e: asyncio.ensure_future(refrescar_lista()),
+                    on_click=lambda e: page.run_task(refrescar_lista),
                 ),
                 ft.ElevatedButton(
                     "← Volver al Dashboard",
                     bgcolor="#1a1f26", color="white", height=34,
-                    on_click=lambda e: page.launch_url_async(BASE_URL),
+                    on_click=lambda e: page.run_task(
+                        page.launch_url_async, BASE_URL
+                    ),
                 ),
             ], spacing=8),
         ], alignment="spaceBetween"),
     )
 
-    # ── Layout principal ──────────────────────────────────────
+    # ── Layout ────────────────────────────────────────────────
     layout = ft.Row([
-        # Lista conversaciones
         ft.Container(
             width=300,
             bgcolor="#0f1214",
@@ -383,15 +379,13 @@ async def whatsapp_main(page: ft.Page):
                             color="white", expand=True),
                     ft.IconButton(
                         ft.icons.REFRESH, icon_color="grey", icon_size=14,
-                        on_click=lambda e: asyncio.ensure_future(refrescar_lista()),
+                        on_click=lambda e: page.run_task(refrescar_lista),
                     ),
                 ], spacing=8, vertical_alignment="center"),
                 ft.Divider(height=8, color="#1a1d20"),
                 lista_conv_ui,
             ], spacing=8, expand=True),
         ),
-
-        # Chat activo
         ft.Container(
             expand=True,
             bgcolor="#0b0d0f",
@@ -425,13 +419,10 @@ async def whatsapp_main(page: ft.Page):
         ),
     ], expand=True, spacing=0)
 
-    # ── Montar página ─────────────────────────────────────────
     page.controls.clear()
     page.controls.extend([
         header,
         ft.Container(content=layout, expand=True),
     ])
     await page.update_async()
-
-    # Cargar conversaciones al iniciar
     await refrescar_lista()

@@ -8,6 +8,7 @@ import uvicorn
 from fastapi.staticfiles import StaticFiles
 from database import esperar_y_crear_tablas
 
+
 app = fastapi.FastAPI(
     title="Smart Liquor - Core Dashboard",
     version="1.0"
