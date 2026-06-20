@@ -47,8 +47,10 @@ async def main(page: ft.Page):
     page.scroll     = ft.ScrollMode.ADAPTIVE
 
     try:
-        telefono_cliente = page.session.get("telefono_cliente_whatsapp") if page.session and "telefono_cliente_whatsapp" in page.session else None
+        telefono_cliente = page.session.get("telefono_cliente_whatsapp") if page.session else None
         modo_catalogo    = page.session.get("modo_catalogo") if page.session else "ver"
+        if modo_catalogo == "admin":
+            modo_catalogo = "ver"
         if not telefono_cliente and page.query:
             telefono_cliente = page.query.get("telefono")
             modo_catalogo    = page.query.get("modo", "ver")
