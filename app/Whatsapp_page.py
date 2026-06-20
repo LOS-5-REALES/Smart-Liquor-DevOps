@@ -95,7 +95,7 @@ async def whatsapp_main(page: ft.Page):
                     ft.Text("Sin conversaciones aún.", color="grey",
                             italic=True, size=12)
                 )
-                page.update()
+                await page.update_async()
                 return
 
             for tel, msgs in conversaciones.items():
@@ -164,8 +164,9 @@ async def whatsapp_main(page: ft.Page):
                 )
                 lista_conv_ui.controls.append(fila)
 
-            print(f"[WHATSAPP PAGE] {len(conversaciones)} conversacion(es) cargadas")
-            page.update()
+            print(f"[WHATSAPP PAGE] {len(lista_conv_ui.controls)} conversacion(es) cargadas")
+            await asyncio.sleep(0.1)
+            await page.update_async()
 
         except Exception as ex:
             print(f"[WHATSAPP PAGE ERROR] {ex}")
@@ -251,7 +252,8 @@ async def whatsapp_main(page: ft.Page):
                         ], alignment=alineacion)
                     )
 
-            page.update()
+            await asyncio.sleep(0.1)
+            await page.update_async()
             await refrescar_lista()
 
         except Exception as ex:
@@ -266,7 +268,7 @@ async def whatsapp_main(page: ft.Page):
             return
         txt_estado_env.value = "Enviando..."
         txt_estado_env.color = "grey"
-        page.update()
+        await page.update_async()
 
         ok = await asyncio.to_thread(enviar_mensaje_twilio, telefono, mensaje)
 
@@ -294,7 +296,7 @@ async def whatsapp_main(page: ft.Page):
         else:
             txt_estado_env.value = "❌ Error al enviar. Verifica credenciales Twilio."
             txt_estado_env.color = "red"
-        page.update()
+        await page.update_async()
 
     # ── Devolver al bot ───────────────────────────────────────
     async def devolver_al_bot(e):
@@ -337,6 +339,10 @@ async def whatsapp_main(page: ft.Page):
         padding=ft.padding.symmetric(horizontal=10, vertical=6),
     )
 
+    # ── Funcion para volver al dashboard ─────────────────────
+    async def volver_dashboard(e):
+        await page.launch_url_async(BASE_URL)
+
     # ── Header ────────────────────────────────────────────────
     header = ft.Container(
         padding=ft.padding.symmetric(horizontal=20, vertical=12),
@@ -357,9 +363,7 @@ async def whatsapp_main(page: ft.Page):
                 ft.ElevatedButton(
                     "← Volver al Dashboard",
                     bgcolor="#1a1f26", color="white", height=34,
-                    on_click=lambda e: page.run_task(
-                        page.launch_url_async, BASE_URL
-                    ),
+                    on_click=volver_dashboard,
                 ),
             ], spacing=8),
         ], alignment="spaceBetween"),
@@ -419,6 +423,7 @@ async def whatsapp_main(page: ft.Page):
         ),
     ], expand=True, spacing=0)
 
+    # ── Montar página y cargar ────────────────────────────────
     page.controls.clear()
     page.controls.extend([
         header,
