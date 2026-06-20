@@ -424,5 +424,6 @@ async def whatsapp_main(page: ft.Page):
         header,
         ft.Container(content=layout, expand=True),
     ])
-    page.update()
+    await asyncio.sleep(0.1)
+    await page.update_async()
     await refrescar_lista()
