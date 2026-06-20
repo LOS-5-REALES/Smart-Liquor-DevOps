@@ -70,7 +70,6 @@ def get_mensajes(telefono: str):
         from database import engine
         import models
         with Session(engine) as db:
-            # marcar como leídos
             db.query(models.MensajeWhatsapp).filter(
                 models.MensajeWhatsapp.telefono == telefono,
                 models.MensajeWhatsapp.leido == False,
@@ -105,7 +104,7 @@ async def enviar_mensaje(request: fastapi.Request):
         TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
         TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN", "")
         TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "whatsapp:+14155238886")
-        url  = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
         r = httpx.post(url, data={
             "From": TWILIO_FROM_NUMBER,
             "To":   f"whatsapp:+{telefono}",
@@ -195,6 +194,7 @@ async def app_con_login(page: ft.Page):
             page.session.set("mostrar_login", mostrar_login)
             page.session.set("telefono_cliente_whatsapp", None)
             page.session.set("modo_catalogo", "admin")
+            page.session.set("autenticado", True)
             await build_dashboard(page)
             print(">>> Dashboard Admin cargado OK")
         except Exception as ex:
@@ -205,15 +205,11 @@ async def app_con_login(page: ft.Page):
     async def evaluar_ruta_y_desplegar(route_event=None):
         url_contexto = str(page.route or "")
         print(f"[ROUTE] Ruta detectada: {url_contexto}")
-        print(f"[ROUTE] page.route raw: {repr(page.route)}")
-        try:
-            print(f"[ROUTE] page.query: {dict(page.query)}")
-        except Exception as eq:
-            print(f"[ROUTE] page.query error: {eq}")
 
         telefono_cliente = None
         modo_catalogo    = "ver"
 
+        # Método 1: Regex sobre la URL
         match_tel = re.search(r"[?&]telefono=([^&\s]+)", url_contexto)
         if match_tel:
             telefono_cliente = match_tel.group(1).strip()
@@ -222,6 +218,7 @@ async def app_con_login(page: ft.Page):
         if match_modo:
             modo_catalogo = match_modo.group(1).strip()
 
+        # Método 2: page.query como fallback
         if not telefono_cliente:
             try:
                 if page.query:
@@ -230,11 +227,11 @@ async def app_con_login(page: ft.Page):
             except Exception as eq:
                 print(f"[ROUTE] page.query no disponible: {eq}")
 
+        # Método 3: Sesión persistente — solo si NO es sesión admin
         if not telefono_cliente:
             try:
                 tel_session  = page.session.get("telefono_cliente_whatsapp")
                 modo_session = page.session.get("modo_catalogo") or "ver"
-                # Solo usar sesión si NO es sesión admin
                 if tel_session and modo_session != "admin":
                     telefono_cliente = tel_session
                     modo_catalogo    = modo_session
@@ -265,7 +262,8 @@ async def app_con_login(page: ft.Page):
                         expand=True,
                         controls=[
                             ft.Icon("local_bar", size=64, color="amber"),
-                            ft.Text("Smart-Liquor", size=28, weight="bold", color="white"),
+                            ft.Text("Smart-Liquor", size=28,
+                                    weight="bold", color="white"),
                             ft.Text("Cargando catálogo...", color="grey"),
                             ft.ProgressRing(color="amber"),
                         ]
@@ -273,9 +271,18 @@ async def app_con_login(page: ft.Page):
                 ))
                 await page.update_async()
         else:
-            print("[ROUTE] Sin parámetros de cliente → Login administrativo")
+            print("[ROUTE] Sin parámetros de cliente → verificando autenticación")
             page.session.set("modo_catalogo", "admin")
-            await mostrar_login()
+            try:
+                autenticado = page.session.get("autenticado")
+            except Exception:
+                autenticado = False
+            if autenticado:
+                print("[ROUTE] Sesión activa → cargando dashboard")
+                await mostrar_dashboard()
+            else:
+                print("[ROUTE] Sin sesión → Login administrativo")
+                await mostrar_login()
 
     page.on_route_change = evaluar_ruta_y_desplegar
     await evaluar_ruta_y_desplegar(None)
