@@ -195,6 +195,7 @@ async def app_con_login(page: ft.Page):
             page.session.set("telefono_cliente_whatsapp", None)
             page.session.set("modo_catalogo", "admin")
             page.session.set("autenticado", True)
+            
             await build_dashboard(page)
             print(">>> Dashboard Admin cargado OK")
         except Exception as ex:
@@ -275,8 +276,10 @@ async def app_con_login(page: ft.Page):
             page.session.set("modo_catalogo", "admin")
             try:
                 autenticado = page.session.get("autenticado")
+                print(f"[ROUTE] autenticado en sesion: {autenticado}")
             except Exception:
                 autenticado = False
+                print("[ROUTE] autenticado: False (excepcion)")
             if autenticado:
                 print("[ROUTE] Sesión activa → cargando dashboard")
                 await mostrar_dashboard()

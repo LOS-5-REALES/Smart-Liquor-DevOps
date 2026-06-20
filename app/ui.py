@@ -225,6 +225,7 @@ async def main(page: ft.Page):
             pass
         page.session.set("telefono_cliente_whatsapp", None)
         page.session.set("modo_catalogo", "admin")
+        page.session.set("autenticado", False)  
         page.controls.clear()
         page.overlay.clear()
         page.bottom_appbar = None
