@@ -63,6 +63,14 @@ async def app_con_login(page: ft.Page):
     async def evaluar_ruta_y_desplegar(route_event=None):
         url_contexto = str(page.route or "")
         print(f"[ROUTE] Ruta detectada: {url_contexto}")
+        # ── Ruta WhatsApp ──────────────────────────────────────
+        if "whatsapp" in url_contexto.lower():
+            print("[ROUTE] Cargando Panel WhatsApp...")
+            from Whatsapp_page import whatsapp_main
+            await limpiar_pagina()
+            page.padding = 0
+            await whatsapp_main(page)
+            return
 
         telefono_cliente = None
         modo_catalogo    = "ver"
@@ -132,15 +140,7 @@ async def app_con_login(page: ft.Page):
     page.on_route_change = evaluar_ruta_y_desplegar
     await evaluar_ruta_y_desplegar(None)
 
-
-# ── App Panel WhatsApp (ruta independiente) ───────────────────
-async def app_whatsapp(page: ft.Page):
-    from whatsapp_page import whatsapp_main
-    await whatsapp_main(page)
-
-
 # ── Montar rutas ──────────────────────────────────────────────
-app.mount("/whatsapp", flet_fastapi.app(app_whatsapp))
 app.mount("/", flet_fastapi.app(app_con_login))
 
 if __name__ == "__main__":
