@@ -159,7 +159,7 @@ async def devolver_al_bot(telefono: str):
 
 @app.get("/whatsapp", response_class=HTMLResponse)
 def panel_whatsapp():
-    ruta_html = os.path.join("static", "whatsapp.html")
+    ruta_html = os.path.join(os.path.dirname(__file__), "static", "whatsapp.html")
     if os.path.exists(ruta_html):
         with open(ruta_html, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
