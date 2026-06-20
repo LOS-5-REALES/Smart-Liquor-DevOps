@@ -422,6 +422,13 @@ async def whatsapp_main(page: ft.Page):
             ], spacing=8, expand=True),
         ),
     ], expand=True, spacing=0)
+    async def on_page_load(e):
+        print("[WHATSAPP PAGE] on_resize disparado")
+        await asyncio.sleep(0.3)
+        await page.update_async()
+        await refrescar_lista()
+
+    page.on_resize = on_page_load
 
     # ── Montar página y cargar ────────────────────────────────
     page.controls.clear()

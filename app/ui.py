@@ -36,7 +36,10 @@ async def run_db(fn):
 async def main(page: ft.Page):
     # Función de ayuda para abrir el Panel de WhatsApp sin errores
     async def ir_a_panel_whatsapp(e):
-        await page.launch_url_async(f"{BASE_URL}/whatsapp")
+        await page.launch_url_async(
+        f"{BASE_URL}/whatsapp",
+        web_window_name="_blank"  # ← abre en nueva pestaña
+        )
     page.title      = "Smart-Liquor"
     page.theme_mode = ft.ThemeMode.DARK
     page.bgcolor    = "#0b0d0f"
