@@ -227,8 +227,12 @@ async def app_con_login(page: ft.Page):
 
         if not telefono_cliente:
             try:
-                telefono_cliente = page.session.get("telefono_cliente_whatsapp")
-                modo_catalogo    = page.session.get("modo_catalogo") or "ver"
+                tel_session  = page.session.get("telefono_cliente_whatsapp")
+                modo_session = page.session.get("modo_catalogo") or "ver"
+                # Solo usar sesión si NO es sesión admin
+                if tel_session and modo_session != "admin":
+                    telefono_cliente = tel_session
+                    modo_catalogo    = modo_session
             except Exception as es:
                 print(f"[ROUTE] Sesión no disponible: {es}")
 
