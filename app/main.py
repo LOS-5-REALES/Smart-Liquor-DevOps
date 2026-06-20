@@ -205,6 +205,11 @@ async def app_con_login(page: ft.Page):
     async def evaluar_ruta_y_desplegar(route_event=None):
         url_contexto = str(page.route or "")
         print(f"[ROUTE] Ruta detectada: {url_contexto}")
+        print(f"[ROUTE] page.route raw: {repr(page.route)}")
+        try:
+            print(f"[ROUTE] page.query: {dict(page.query)}")
+        except Exception as eq:
+            print(f"[ROUTE] page.query error: {eq}")
 
         telefono_cliente = None
         modo_catalogo    = "ver"
