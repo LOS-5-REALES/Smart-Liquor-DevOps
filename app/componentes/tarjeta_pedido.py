@@ -6,31 +6,19 @@ from constants import ESTADOS_LOGISTICOS
 
 
 def build_tarjeta_pedido(p, cambiar_estado, cargar_modal_editar, page):
-    """
-    Construye una tarjeta tipo ticket horizontal de alta densidad para la gestión de pedidos.
-
-    Parámetros:
-        p                   -- objeto Pedido de SQLAlchemy
-        cambiar_estado      -- función async para cambiar estado logístico
-        cargar_modal_editar -- función async para abrir el modal de edición
-        page                -- objeto Page de Flet
-    """
     nombre_cliente = p.cliente.nombre_completo if p.cliente else "Anónimo"
     telefono_cli   = p.cliente.telefono if p.cliente and p.cliente.telefono else "Sin telf."
     total          = p.total_pedido or 0.0
     estado_actual  = p.estado_logistico or "recibido"
-    
     datos_estado   = ESTADOS_LOGISTICOS.get(estado_actual, {"color": "grey", "label": "Desconocido"})
     color_estado   = datos_estado["color"]
 
-    # ── Formateo de fecha ejecutivo ──────────────────────────
     fecha_str = ""
     if p.fecha_hora:
         fh = (p.fecha_hora if isinstance(p.fecha_hora, datetime)
               else datetime.fromisoformat(str(p.fecha_hora)))
         fecha_str = fh.strftime("%d/%m/%Y %H:%M")
 
-    # ── Filas de licores comprados ────────────────────────────
     filas_items = []
     if p.items:
         for item in p.items:
@@ -50,7 +38,6 @@ def build_tarjeta_pedido(p, cambiar_estado, cargar_modal_editar, page):
             ft.Text("Sin licores o ítems registrados en la orden", color="grey", size=12, italic=True)
         )
 
-    # ── Desplegable colapsable interno ────────────────────────
     panel_detalle = ft.Container(
         visible=False,
         content=ft.Column(controls=[
@@ -80,7 +67,6 @@ def build_tarjeta_pedido(p, cambiar_estado, cargar_modal_editar, page):
 
     btn_expand.on_click = toggle
 
-    # ── BADGE DE ESTADO CON ACCIÓN POPUP ──
     container_badge = ft.Container(
         content=ft.Text(
             datos_estado["label"].upper(),
@@ -101,24 +87,21 @@ def build_tarjeta_pedido(p, cambiar_estado, cargar_modal_editar, page):
         await page.update_async()
         await cambiar_estado(p.id, clave_nuevo_estado)
 
-    # 🛠️ CORRECCIÓN AQUÍ: Se cambió 'key' por 'data' para evitar el error de inicialización
     menu_estados = ft.PopupMenuButton(
         content=container_badge,
         items=[
             ft.PopupMenuItem(
                 text=datos["label"],
                 data=clave,
-                on_click=lambda e: asyncio.ensure_future(_cambiar_estado_popup(e, e.control.data))
+                on_click=lambda e: page.run_task(_cambiar_estado_popup, e, e.control.data)
             ) for clave, datos in ESTADOS_LOGISTICOS.items()
         ],
         tooltip="Cambiar estado logístico"
     )
 
-    # ── RENDERIZADO ESTRUCTURAL HORIZONTAL (WIDESCREEN) ───────
     return ft.Container(
         content=ft.Column(controls=[
             ft.Row(controls=[
-                # Columna 1: Identificador del Pedido e Icono
                 ft.Row([
                     ft.Container(
                         content=ft.Icon(ft.icons.LOCAL_SHIPPING, color="#2196f3", size=18),
@@ -132,7 +115,6 @@ def build_tarjeta_pedido(p, cambiar_estado, cargar_modal_editar, page):
                     ], spacing=2)
                 ], spacing=12, expand=2),
 
-                # Columna 2: Datos de Contacto del Cliente
                 ft.Container(
                     content=ft.Column([
                         ft.Text(nombre_cliente, weight="w600", size=14, color="white", overflow=ft.TextOverflow.ELLIPSIS),
@@ -141,14 +123,12 @@ def build_tarjeta_pedido(p, cambiar_estado, cargar_modal_editar, page):
                     expand=3,
                 ),
 
-                # Columna 3: Gestor de Estado Logístico (Popup)
                 ft.Container(
                     content=menu_estados,
                     expand=2,
                     alignment=ft.alignment.center_left
                 ),
 
-                # Columna 4: Total Financiero de la Orden
                 ft.Container(
                     content=ft.Text(
                         f"S/ {total:.2f}",
@@ -161,7 +141,6 @@ def build_tarjeta_pedido(p, cambiar_estado, cargar_modal_editar, page):
                     padding=ft.padding.only(right=10)
                 ),
 
-                # Columna 5: Botones de Acción Rápida
                 ft.Row([
                     ft.IconButton(
                         icon=ft.icons.EDIT_NOTE,
@@ -169,17 +148,15 @@ def build_tarjeta_pedido(p, cambiar_estado, cargar_modal_editar, page):
                         icon_size=20,
                         tooltip="Modificar detalles del pedido",
                         style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=6)),
-                        on_click=lambda e: asyncio.ensure_future(cargar_modal_editar(p.id)),
+                        on_click=lambda e: page.run_task(cargar_modal_editar, p.id),
                     ),
                     btn_expand,
                 ], spacing=4, alignment="end")
 
             ], vertical_alignment="center", spacing=10),
-            
-            # Sub-panel oculto que despliega la lista detallada de botellas
             panel_detalle,
         ], spacing=0),
-        
+
         padding=ft.padding.symmetric(horizontal=16, vertical=12),
         bgcolor="#111416",
         border_radius=12,

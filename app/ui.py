@@ -45,10 +45,11 @@ async def main(page: ft.Page):
     page.padding    = 0
     page.scroll     = ft.ScrollMode.ADAPTIVE
 
-    # ── INTERFAZ ADMINISTRATIVA ───────────────────────────────
     lista_pedidos_ui    = ft.Column(spacing=12, scroll=ft.ScrollMode.ADAPTIVE)
     lista_inventario_ui = ft.Column(spacing=10, scroll=ft.ScrollMode.ADAPTIVE)
     _todos_los_pedidos  = []
+    _filtro_estado      = {"valor": None}
+    _solo_criticos      = {"activo": False}
 
     txt_ventas, txt_pedidos, txt_alertas, txt_pendientes, txt_entregados, row_metricas, actualizar_metricas = build_metricas()
 
@@ -116,10 +117,11 @@ async def main(page: ft.Page):
             txt_error_fecha.value = "La fecha inicio no puede ser mayor que la fecha fin."
             await page.update_async()
             return
-        await construir_lista_pedidos(
-            filtrar_pedidos_por_fecha(_todos_los_pedidos,
-                                      inp_fecha_inicio.value, inp_fecha_fin.value)
-        )
+        peds = filtrar_pedidos_por_fecha(_todos_los_pedidos,
+                                          inp_fecha_inicio.value, inp_fecha_fin.value)
+        if _filtro_estado["valor"]:
+            peds = [p for p in peds if p.estado_logistico == _filtro_estado["valor"]]
+        await construir_lista_pedidos(peds)
         await page.update_async()
 
     async def ejecutar_reporte_pdf(e):
@@ -143,6 +145,7 @@ async def main(page: ft.Page):
 
     async def limpiar_filtro(e=None):
         inp_fecha_inicio.value = inp_fecha_fin.value = txt_error_fecha.value = ""
+        _filtro_estado["valor"] = None
         await construir_lista_pedidos(_todos_los_pedidos)
         await page.update_async()
 
@@ -166,6 +169,9 @@ async def main(page: ft.Page):
             _todos_los_pedidos = peds
             peds_filtrados = filtrar_pedidos_por_fecha(
                 peds, inp_fecha_inicio.value, inp_fecha_fin.value)
+            if _filtro_estado["valor"]:
+                peds_filtrados = [p for p in peds_filtrados
+                                  if p.estado_logistico == _filtro_estado["valor"]]
             criticos   = [p for p in prods if (p.stock_actual or 0) <= (p.stock_minimo or 10)]
             pendientes = [p for p in peds_filtrados if p.estado_logistico in ("recibido", "en camino")]
             entregados = [p for p in peds_filtrados if p.estado_logistico == "entregado"]
@@ -177,7 +183,12 @@ async def main(page: ft.Page):
             txt_entregados.value = str(len(entregados))
             await construir_lista_pedidos(peds_filtrados)
             lista_inventario_ui.controls.clear()
-            for pr in prods:
+            prods_mostrar = prods
+            if _solo_criticos["activo"]:
+                prods_mostrar = [p for p in prods
+                                 if (p.stock_actual or 0) <= (p.stock_minimo or 10)
+                                 and not p.nombre.startswith("[DESCONTINUADO]")]
+            for pr in prods_mostrar:
                 lista_inventario_ui.controls.append(
                     build_fila_inventario(pr=pr, abrir_suministro=safe_abrir_suministro,
                                           abrir_eliminar=safe_abrir_eliminar)
@@ -190,9 +201,14 @@ async def main(page: ft.Page):
     async def buscar_en_inventario(e):
         termino = e.control.value.lower()
         prods   = await run_db(lambda db: db.query(models.Producto).all())
-        prods_f = prods if not termino else [p for p in prods if termino in p.nombre.lower()]
+        if termino:
+            prods = [p for p in prods if termino in p.nombre.lower()]
+        if _solo_criticos["activo"]:
+            prods = [p for p in prods
+                     if (p.stock_actual or 0) <= (p.stock_minimo or 10)
+                     and not p.nombre.startswith("[DESCONTINUADO]")]
         lista_inventario_ui.controls.clear()
-        for pr in prods_f:
+        for pr in prods:
             lista_inventario_ui.controls.append(
                 build_fila_inventario(pr, safe_abrir_suministro, safe_abrir_eliminar))
         await page.update_async()
@@ -230,25 +246,95 @@ async def main(page: ft.Page):
         print("[CERRAR SESION] Done")
 
     tab_index = {"actual": 0}
-    contenido_central = ft.Container(
-        padding=ft.padding.all(16),
-        expand=True,
+    contenido_central = ft.Container(padding=ft.padding.all(16), expand=True)
+
+    # ── Botones filtro estado pedidos ─────────────────────────
+    btns_estado = {}
+
+    def build_btn_filtro_estado(clave, label, color):
+        btn = ft.Container(
+            content=ft.Text(label, size=11, weight="bold", color="grey"),
+            bgcolor="#111416",
+            border=ft.border.all(1, "#232629"),
+            border_radius=6,
+            padding=ft.padding.symmetric(horizontal=10, vertical=6),
+        )
+
+        async def on_click(e):
+            if _filtro_estado["valor"] == clave:
+                _filtro_estado["valor"] = None
+                btn.content.color = "grey"
+                btn.bgcolor = "#111416"
+                btn.border = ft.border.all(1, "#232629")
+            else:
+                # Desactivar anterior
+                anterior = _filtro_estado["valor"]
+                if anterior and anterior in btns_estado:
+                    btns_estado[anterior].content.color = "grey"
+                    btns_estado[anterior].bgcolor = "#111416"
+                    btns_estado[anterior].border = ft.border.all(1, "#232629")
+                _filtro_estado["valor"] = clave
+                btn.content.color = color
+                btn.bgcolor = f"{color}15"
+                btn.border = ft.border.all(1, color)
+            await aplicar_filtro()
+
+        btn.on_click = on_click
+        btns_estado[clave] = btn
+        return btn
+
+    filtros_estado_row = ft.Row([
+        ft.Text("Filtrar:", size=12, color="grey"),
+        build_btn_filtro_estado("recibido",  "Recibido",  "#2196f3"),
+        build_btn_filtro_estado("en camino", "En Camino", "#ffb74d"),
+        build_btn_filtro_estado("entregado", "Entregado", "#66bb6a"),
+        build_btn_filtro_estado("cancelado", "Cancelado", "#ef5350"),
+    ], spacing=6, wrap=True)
+
+    # ── Botón stock crítico ───────────────────────────────────
+    btn_criticos = ft.Container(
+        content=ft.Row([
+            ft.Icon(ft.icons.WARNING_AMBER, color="grey", size=14),
+            ft.Text("Stock Crítico", size=11, weight="bold", color="grey"),
+        ], spacing=6),
+        bgcolor="#111416",
+        border=ft.border.all(1, "#232629"),
+        border_radius=6,
+        padding=ft.padding.symmetric(horizontal=10, vertical=6),
     )
+
+    async def toggle_criticos(e):
+        _solo_criticos["activo"] = not _solo_criticos["activo"]
+        if _solo_criticos["activo"]:
+            btn_criticos.content.controls[0].color = "#ffb74d"
+            btn_criticos.content.controls[1].color = "#ffb74d"
+            btn_criticos.bgcolor = "#2c241a"
+            btn_criticos.border = ft.border.all(1, "#ffb74d")
+        else:
+            btn_criticos.content.controls[0].color = "grey"
+            btn_criticos.content.controls[1].color = "grey"
+            btn_criticos.bgcolor = "#111416"
+            btn_criticos.border = ft.border.all(1, "#232629")
+        await refrescar_datos()
+
+    btn_criticos.on_click = toggle_criticos
 
     # ── Vistas ────────────────────────────────────────────────
     def vista_pedidos():
         return ft.Column([
             ft.Text("Gestión de Pedidos", size=22, weight="bold", color="white"),
-            ft.Container(content=col_filtro, padding=ft.padding.only(top=10, bottom=10)),
+            ft.Container(content=col_filtro, padding=ft.padding.only(top=10, bottom=6)),
+            filtros_estado_row,
             txt_error_fecha,
             ft.Container(content=lista_pedidos_ui, expand=True)
-        ], spacing=10, expand=True)
+        ], spacing=8, expand=True)
 
     def vista_inventario():
         return ft.Column([
             ft.Row([
                 ft.Text("Control de Inventario", size=22, weight="bold",
                         color="white", expand=True),
+                btn_criticos,
                 ft.ElevatedButton(
                     "Nuevo Producto", bgcolor="#2e7d32", color="white", height=40,
                     icon=ft.icons.ADD,

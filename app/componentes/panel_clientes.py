@@ -1,14 +1,11 @@
 # app/componentes/panel_clientes.py
 import asyncio
+from datetime import datetime
 import flet as ft
 
 
 def build_panel_clientes(page: ft.Page, run_db, models, crud):
-    """
-    Panel premium de búsqueda y gestión de clientes a pantalla completa.
-    Retorna (panel, refrescar_clientes) perfectamente acoplados con ui.py.
-    """
-    lista_clientes_ui = ft.Column(spacing=10, scroll=ft.ScrollMode.ADAPTIVE, expand=True)
+    lista_clientes_ui  = ft.Column(spacing=10, scroll=ft.ScrollMode.ADAPTIVE, expand=True)
     txt_total_clientes = ft.Container(
         content=ft.Text("0 registrados", size=11, color="#2196f3", weight="bold"),
         bgcolor="#1a1f26",
@@ -17,17 +14,11 @@ def build_panel_clientes(page: ft.Page, run_db, models, crud):
     )
     _todos_los_clientes = []
 
-    # ── Buscador Corporativo de Alta Densidad (CORREGIDO) ─────
     inp_busqueda = ft.TextField(
         hint_text="Buscar cliente por nombre, apellidos o número telefónico...",
-        border_radius=12,
-        height=46,
-        text_size=14,
-        content_padding=12,
-        prefix_icon=ft.icons.SEARCH,  # Compatible globalmente
-        bgcolor="#111416",
-        border_color="#232629",
-        focused_border_color="#2196f3",
+        border_radius=12, height=46, text_size=14, content_padding=12,
+        prefix_icon=ft.icons.SEARCH,
+        bgcolor="#111416", border_color="#232629", focused_border_color="#2196f3",
     )
 
     def filtrar_clientes(termino: str):
@@ -47,7 +38,6 @@ def build_panel_clientes(page: ft.Page, run_db, models, crud):
 
     inp_busqueda.on_change = on_busqueda
 
-    # ── Construcción de Fichas de Clientes (Widescreen) ────────
     async def construir_lista(clientes):
         lista_clientes_ui.controls.clear()
         txt_total_clientes.content.value = f"{len(clientes)} cliente{'s' if len(clientes) != 1 else ''}"
@@ -56,7 +46,7 @@ def build_panel_clientes(page: ft.Page, run_db, models, crud):
             lista_clientes_ui.controls.append(
                 ft.Container(
                     content=ft.Text(
-                        "No se encontraron clientes registrados en la base de datos.",
+                        "No se encontraron clientes registrados.",
                         color="grey", italic=True, size=13
                     ),
                     padding=20,
@@ -65,96 +55,172 @@ def build_panel_clientes(page: ft.Page, run_db, models, crud):
             return
 
         for c in clientes:
-            # Cálculos de valor transaccional (Métricas del cliente)
             total_pedidos = len(c.pedidos) if c.pedidos else 0
             total_gastado = sum(
                 p.total_pedido for p in c.pedidos if p.total_pedido
             ) if c.pedidos else 0.0
 
-            # Lógica de canales e identificación visual
-            es_whatsapp = (c.telefono or "").startswith("whatsapp:")
-            tel_limpio  = (c.telefono or "").replace("whatsapp:", "")
-            
-            fuente_icon = ft.icons.PHONELINK_RING if es_whatsapp else ft.icons.ASSIGNMENT_IND
+            # Fecha del último pedido
+            fecha_ultimo = ""
+            if c.pedidos:
+                pedidos_con_fecha = [p for p in c.pedidos if p.fecha_hora]
+                if pedidos_con_fecha:
+                    ultimo = max(pedidos_con_fecha, key=lambda p: p.fecha_hora)
+                    fh = (ultimo.fecha_hora if isinstance(ultimo.fecha_hora, datetime)
+                          else datetime.fromisoformat(str(ultimo.fecha_hora)))
+                    fecha_ultimo = fh.strftime("%d/%m/%Y")
+
+            # Fecha del primer pedido
+            fecha_primero = ""
+            if c.pedidos:
+                pedidos_con_fecha = [p for p in c.pedidos if p.fecha_hora]
+                if pedidos_con_fecha:
+                    primero = min(pedidos_con_fecha, key=lambda p: p.fecha_hora)
+                    fh = (primero.fecha_hora if isinstance(primero.fecha_hora, datetime)
+                          else datetime.fromisoformat(str(primero.fecha_hora)))
+                    fecha_primero = fh.strftime("%d/%m/%Y")
+
+            es_whatsapp  = (c.telefono or "").startswith("whatsapp:")
+            tel_limpio   = (c.telefono or "").replace("whatsapp:", "")
+            fuente_icon  = ft.icons.PHONELINK_RING if es_whatsapp else ft.icons.ASSIGNMENT_IND
             fuente_color = "#25D366" if es_whatsapp else "#2196f3"
             fuente_label = "WHATSAPP" if es_whatsapp else "MANUAL"
 
+            # Historial de fechas de pedidos (desplegable)
+            fechas_pedidos = []
+            if c.pedidos:
+                pedidos_ordenados = sorted(
+                    [p for p in c.pedidos if p.fecha_hora],
+                    key=lambda p: p.fecha_hora, reverse=True
+                )
+                for p in pedidos_ordenados[:5]:  # Últimos 5
+                    fh = (p.fecha_hora if isinstance(p.fecha_hora, datetime)
+                          else datetime.fromisoformat(str(p.fecha_hora)))
+                    fechas_pedidos.append(
+                        ft.Row([
+                            ft.Icon(ft.icons.RECEIPT, size=11, color="#2196f3"),
+                            ft.Text(f"Pedido #{p.id:04d}", size=11, color="grey"),
+                            ft.Text(fh.strftime("%d/%m/%Y %H:%M"), size=11, color="#ffc107"),
+                            ft.Text(f"S/ {p.total_pedido:.2f}" if p.total_pedido else "", 
+                                   size=11, color="#66bb6a"),
+                        ], spacing=8)
+                    )
+
+            panel_fechas = ft.Container(
+                visible=False,
+                content=ft.Column([
+                    ft.Divider(height=8, color="#1a1d20"),
+                    ft.Text("HISTORIAL DE PEDIDOS", size=10, color="grey", weight="bold"),
+                    ft.Column(fechas_pedidos if fechas_pedidos else [
+                        ft.Text("Sin pedidos registrados", size=11, color="grey", italic=True)
+                    ], spacing=4),
+                ], spacing=6),
+                padding=ft.padding.only(left=16, right=16, bottom=8, top=4),
+            )
+
+            btn_historial = ft.IconButton(
+                icon=ft.icons.HISTORY,
+                icon_color="grey",
+                icon_size=18,
+                tooltip="Ver historial de pedidos",
+            )
+
+            async def toggle_historial(e, panel=panel_fechas, btn=btn_historial):
+                panel.visible = not panel.visible
+                btn.icon_color = "#ffc107" if panel.visible else "grey"
+                await page.update_async()
+
+            btn_historial.on_click = toggle_historial
+
             lista_clientes_ui.controls.append(
                 ft.Container(
-                    content=ft.Row([
-                        # 1. Avatar Dinámico / Canal de Ingreso
-                        ft.Container(
-                            content=ft.Icon(fuente_icon, color=fuente_color, size=20),
-                            bgcolor=f"{fuente_color}10",
-                            padding=12,
-                            border_radius=50, # Completamente circular
-                            alignment=ft.alignment.center
-                        ),
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Container(
+                                content=ft.Icon(fuente_icon, color=fuente_color, size=20),
+                                bgcolor=f"{fuente_color}10",
+                                padding=12, border_radius=50,
+                                alignment=ft.alignment.center
+                            ),
 
-                        # 2. Información del Perfil (Nombre y Teléfono)
-                        ft.Container(
-                            content=ft.Column([
-                                ft.Text(
-                                    c.nombre_completo or "Cliente Sin Nombre",
-                                    weight="bold", size=15, color="white",
-                                    overflow=ft.TextOverflow.ELLIPSIS
-                                ),
-                                ft.Row([
-                                    ft.Text(f"📞 {tel_limpio}", color="grey", size=12),
-                                    ft.Container(
-                                        content=ft.Text(fuente_label, size=9, color=fuente_color, weight="bold"),
-                                        bgcolor=f"{fuente_color}15",
-                                        padding=ft.padding.symmetric(horizontal=6, vertical=2),
-                                        border_radius=4,
-                                        border=ft.border.all(1, fuente_color)
+                            ft.Container(
+                                content=ft.Column([
+                                    ft.Text(
+                                        c.nombre_completo or "Cliente Sin Nombre",
+                                        weight="bold", size=15, color="white",
+                                        overflow=ft.TextOverflow.ELLIPSIS
+                                    ),
+                                    ft.Row([
+                                        ft.Text(f"📞 {tel_limpio}", color="grey", size=12),
+                                        ft.Container(
+                                            content=ft.Text(fuente_label, size=9,
+                                                           color=fuente_color, weight="bold"),
+                                            bgcolor=f"{fuente_color}15",
+                                            padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                                            border_radius=4,
+                                            border=ft.border.all(1, fuente_color)
+                                        )
+                                    ], spacing=8)
+                                ], spacing=4, alignment="center"),
+                                expand=3,
+                            ),
+
+                            ft.Container(
+                                content=ft.Column([
+                                    ft.Text("DIRECCIÓN DE ENTREGA", size=10, color="grey", weight="bold"),
+                                    ft.Text(
+                                        c.direccion_exacta or "Dirección no especificada",
+                                        size=13, color="white" if c.direccion_exacta else "grey",
+                                        overflow=ft.TextOverflow.ELLIPSIS,
+                                        italic=not c.direccion_exacta
+                                    ),
+                                    ft.Text(
+                                        f"📍 Ref: {c.referencia_ubicacion}",
+                                        size=11, color="#ffb74d",
+                                        overflow=ft.TextOverflow.ELLIPSIS,
+                                        visible=bool(c.referencia_ubicacion)
                                     )
-                                ], spacing=8)
-                            ], spacing=4, alignment="center"),
-                            expand=3,
-                        ),
-
-                        # 3. Datos de Despacho Localizado (Chincha)
-                        ft.Container(
-                            content=ft.Column([
-                                ft.Text("DIRECCIÓN DE ENTREGA", size=10, color="grey", weight="bold"),
-                                ft.Text(
-                                    c.direccion_exacta or "Dirección no especificada",
-                                    size=13, color="white" if c.direccion_exacta else "grey",
-                                    overflow=ft.TextOverflow.ELLIPSIS,
-                                    italic=not c.direccion_exacta
-                                ),
-                                ft.Text(
-                                    f"📍 Ref: {c.referencia_ubicacion}",
-                                    size=11, color="#ffb74d",
-                                    overflow=ft.TextOverflow.ELLIPSIS,
-                                    visible=bool(c.referencia_ubicacion)
-                                )
-                            ], spacing=2, alignment="center"),
-                            expand=4,
-                        ),
-
-                        # 4. Historial y Volumen de Compra Financiera
-                        ft.Container(
-                            content=ft.Row([
-                                # Columna interna: Conteo de órdenes
-                                ft.Column([
-                                    ft.Text("ÓRDENES", size=10, color="grey", weight="bold"),
-                                    ft.Text(f"{total_pedidos} peds", size=13, color="#ffc107", weight="bold")
                                 ], spacing=2, alignment="center"),
-                                ft.VerticalDivider(width=20, color="#1a1d20"),
-                                # Columna interna: Valor de vida útil del cliente (LTV)
-                                ft.Column([
-                                    ft.Text("TOTAL GASTADO", size=10, color="grey", weight="bold"),
-                                    ft.Text(f"S/ {total_gastado:.2f}", size=14, color="#66bb6a", weight="bold")
-                                ], spacing=2, alignment="center")
-                            ], spacing=0, alignment="end"),
-                            expand=3,
-                            alignment=ft.alignment.center_right
-                        )
+                                expand=3,
+                            ),
 
-                    ], alignment="spaceBetween", vertical_alignment="center"),
-                    
-                    # Estilo premium para la franja del cliente
+                            ft.Container(
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Column([
+                                            ft.Text("ÓRDENES", size=10, color="grey", weight="bold"),
+                                            ft.Text(f"{total_pedidos} peds", size=13,
+                                                   color="#ffc107", weight="bold")
+                                        ], spacing=2, alignment="center"),
+                                        ft.VerticalDivider(width=20, color="#1a1d20"),
+                                        ft.Column([
+                                            ft.Text("TOTAL GASTADO", size=10, color="grey", weight="bold"),
+                                            ft.Text(f"S/ {total_gastado:.2f}", size=14,
+                                                   color="#66bb6a", weight="bold")
+                                        ], spacing=2, alignment="center"),
+                                    ], spacing=0),
+                                    # Fechas primer y último pedido
+                                    ft.Row([
+                                        ft.Text(
+                                            f"🗓 Primero: {fecha_primero}" if fecha_primero else "",
+                                            size=10, color="grey"
+                                        ),
+                                        ft.Text(
+                                            f"🕐 Último: {fecha_ultimo}" if fecha_ultimo else "",
+                                            size=10, color="#2196f3"
+                                        ),
+                                    ], spacing=10),
+                                ], spacing=4),
+                                expand=3,
+                                alignment=ft.alignment.center_right
+                            ),
+
+                            btn_historial,
+
+                        ], alignment="spaceBetween", vertical_alignment="center"),
+                        panel_fechas,
+                    ], spacing=0),
+
                     padding=ft.padding.symmetric(horizontal=16, vertical=12),
                     bgcolor="#111416",
                     border_radius=12,
@@ -162,14 +228,13 @@ def build_panel_clientes(page: ft.Page, run_db, models, crud):
                 )
             )
 
-    # ── Refresco de clientes sincronizado con SQLAlchemy ──────
     async def refrescar_clientes():
         nonlocal _todos_los_clientes
         try:
+            from sqlalchemy.orm import joinedload
             clientes = await run_db(lambda db: (
                 db.query(models.Cliente)
-                .options(__import__('sqlalchemy.orm', fromlist=['joinedload'])
-                         .joinedload(models.Cliente.pedidos))
+                .options(joinedload(models.Cliente.pedidos))
                 .order_by(models.Cliente.id.desc())
                 .all()
             ))
@@ -180,7 +245,6 @@ def build_panel_clientes(page: ft.Page, run_db, models, crud):
         except Exception as ex:
             print(f"[CLIENTES ERROR] {ex}")
 
-    # ── Armado del Layout Unificado ───────────────────────────
     panel = ft.Column([
         ft.Row([
             ft.Row([
@@ -191,18 +255,13 @@ def build_panel_clientes(page: ft.Page, run_db, models, crud):
                 txt_total_clientes,
                 ft.IconButton(
                     ft.icons.REFRESH,
-                    icon_color="white",
-                    bgcolor="#111416",
-                    icon_size=16,
+                    icon_color="white", bgcolor="#111416", icon_size=16,
                     tooltip="Actualizar base de datos",
-                    on_click=lambda e: asyncio.ensure_future(refrescar_clientes()),
+                    on_click=lambda e: page.run_task(refrescar_clientes),
                 ),
             ], spacing=8),
         ], alignment="spaceBetween", vertical_alignment="center"),
-        
-        # CORREGIDO: padding.vertical cambiado por padding.only para soporte legacy
         ft.Container(content=inp_busqueda, padding=ft.padding.only(top=5, bottom=5)),
-        
         ft.Container(content=lista_clientes_ui, expand=True),
     ], spacing=10, expand=True)
 
