@@ -50,6 +50,7 @@ async def main(page: ft.Page):
     _todos_los_pedidos  = []
     _filtro_estado      = {"valor": None}
     _solo_criticos      = {"activo": False}
+    _busqueda_pedido    = {"termino": ""}
 
     txt_ventas, txt_pedidos, txt_alertas, txt_pendientes, txt_entregados, row_metricas, actualizar_metricas = build_metricas()
 
@@ -109,6 +110,20 @@ async def main(page: ft.Page):
                                      cargar_modal_editar=safe_cargar_modal_editar, page=page)
             )
 
+    def filtrar_pedidos_activos():
+        """Aplica todos los filtros activos sobre _todos_los_pedidos."""
+        peds = filtrar_pedidos_por_fecha(
+            _todos_los_pedidos, inp_fecha_inicio.value, inp_fecha_fin.value)
+        if _filtro_estado["valor"]:
+            peds = [p for p in peds if p.estado_logistico == _filtro_estado["valor"]]
+        termino = _busqueda_pedido["termino"]
+        if termino:
+            peds = [p for p in peds
+                    if termino in (p.cliente.nombre_completo or "").lower()
+                    or termino in (p.cliente.telefono or "").lower()
+                    if p.cliente]
+        return peds
+
     async def aplicar_filtro(e=None):
         txt_error_fecha.value = ""
         desde = parsear_fecha(inp_fecha_inicio.value)
@@ -117,11 +132,12 @@ async def main(page: ft.Page):
             txt_error_fecha.value = "La fecha inicio no puede ser mayor que la fecha fin."
             await page.update_async()
             return
-        peds = filtrar_pedidos_por_fecha(_todos_los_pedidos,
-                                          inp_fecha_inicio.value, inp_fecha_fin.value)
-        if _filtro_estado["valor"]:
-            peds = [p for p in peds if p.estado_logistico == _filtro_estado["valor"]]
-        await construir_lista_pedidos(peds)
+        await construir_lista_pedidos(filtrar_pedidos_activos())
+        await page.update_async()
+
+    async def buscar_en_pedidos(e):
+        _busqueda_pedido["termino"] = e.control.value.lower()
+        await construir_lista_pedidos(filtrar_pedidos_activos())
         await page.update_async()
 
     async def ejecutar_reporte_pdf(e):
@@ -146,11 +162,21 @@ async def main(page: ft.Page):
     async def limpiar_filtro(e=None):
         inp_fecha_inicio.value = inp_fecha_fin.value = txt_error_fecha.value = ""
         _filtro_estado["valor"] = None
+        _busqueda_pedido["termino"] = ""
+        inp_busqueda_pedido.value = ""
         await construir_lista_pedidos(_todos_los_pedidos)
         await page.update_async()
 
     inp_fecha_inicio, inp_fecha_fin, txt_error_fecha, col_filtro = build_filtro_fecha(
         on_filtrar=aplicar_filtro, on_pdf=ejecutar_reporte_pdf, on_limpiar=limpiar_filtro,
+    )
+
+    inp_busqueda_pedido = ft.TextField(
+        hint_text="Buscar pedido por nombre o teléfono del cliente...",
+        on_change=buscar_en_pedidos,
+        border_color="#232629", border_radius=12, height=42,
+        text_size=13, content_padding=10,
+        prefix_icon=ft.icons.SEARCH, bgcolor="#111416",
     )
 
     async def refrescar_datos(e=None):
@@ -167,11 +193,7 @@ async def main(page: ft.Page):
                 .order_by(models.Pedido.id.desc()).all()
             ))
             _todos_los_pedidos = peds
-            peds_filtrados = filtrar_pedidos_por_fecha(
-                peds, inp_fecha_inicio.value, inp_fecha_fin.value)
-            if _filtro_estado["valor"]:
-                peds_filtrados = [p for p in peds_filtrados
-                                  if p.estado_logistico == _filtro_estado["valor"]]
+            peds_filtrados = filtrar_pedidos_activos()
             criticos   = [p for p in prods if (p.stock_actual or 0) <= (p.stock_minimo or 10)]
             pendientes = [p for p in peds_filtrados if p.estado_logistico in ("recibido", "en camino")]
             entregados = [p for p in peds_filtrados if p.estado_logistico == "entregado"]
@@ -267,7 +289,6 @@ async def main(page: ft.Page):
                 btn.bgcolor = "#111416"
                 btn.border = ft.border.all(1, "#232629")
             else:
-                # Desactivar anterior
                 anterior = _filtro_estado["valor"]
                 if anterior and anterior in btns_estado:
                     btns_estado[anterior].content.color = "grey"
@@ -325,9 +346,11 @@ async def main(page: ft.Page):
             ft.Text("Gestión de Pedidos", size=22, weight="bold", color="white"),
             ft.Container(content=col_filtro, padding=ft.padding.only(top=10, bottom=6)),
             filtros_estado_row,
+            ft.Container(content=inp_busqueda_pedido,
+                         padding=ft.padding.only(top=6, bottom=4)),
             txt_error_fecha,
             ft.Container(content=lista_pedidos_ui, expand=True)
-        ], spacing=8, expand=True)
+        ], spacing=6, expand=True)
 
     def vista_inventario():
         return ft.Column([
