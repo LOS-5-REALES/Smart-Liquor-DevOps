@@ -17,7 +17,10 @@ app = fastapi.FastAPI(
 if not os.path.exists("static"):
     os.makedirs("static")
 
+# PDFs de reportes
 app.mount("/static", StaticFiles(directory="static"), name="static")
+# HTML pages (catalogo, whatsapp)
+app.mount("/assets", StaticFiles(directory="app/static"), name="assets")
 
 @app.get("/api", tags=["Diagnóstico"])
 def read_root():
@@ -44,15 +47,6 @@ def get_productos():
             } for p in prods])
     except Exception as ex:
         return JSONResponse(content={"error": str(ex)}, status_code=500)
-
-
-@app.get("/catalogo", response_class=HTMLResponse)
-def catalogo_cliente():
-    ruta_html = os.path.join(os.path.dirname(__file__), "static", "catalogo.html")
-    if os.path.exists(ruta_html):
-        with open(ruta_html, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    return HTMLResponse(content="<h1>Catálogo no encontrado</h1>", status_code=404)
 
 
 # ── API REST para Panel WhatsApp ──────────────────────────────
@@ -187,15 +181,6 @@ async def devolver_al_bot(telefono: str):
         return JSONResponse(content={"error": str(ex)}, status_code=500)
 
 
-@app.get("/whatsapp", response_class=HTMLResponse)
-def panel_whatsapp():
-    ruta_html = os.path.join(os.path.dirname(__file__), "static", "whatsapp.html")
-    if os.path.exists(ruta_html):
-        with open(ruta_html, "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    return HTMLResponse(content="<h1>Panel no encontrado</h1>", status_code=404)
-
-
 # ── App principal (dashboard + catalogo cliente) ──────────────
 async def app_con_login(page: ft.Page):
     page.title      = "Smart-Liquor DevOps"
@@ -269,36 +254,12 @@ async def app_con_login(page: ft.Page):
         print(f"[ROUTE] telefono={telefono_cliente} | modo={modo_catalogo}")
 
         if telefono_cliente and str(telefono_cliente).strip():
-            print(f"[ROUTE] Cargando catálogo para cliente: {telefono_cliente}")
-            try:
-                page.session.set("telefono_cliente_whatsapp", str(telefono_cliente))
-                page.session.set("modo_catalogo", str(modo_catalogo))
-                page.session.set("autenticado", False)
-                from ui import main as build_dashboard
-                await limpiar_pagina()
-                page.padding = 0
-                await build_dashboard(page)
-            except Exception as ex:
-                print(f"[ROUTE ERROR] {ex}")
-                import traceback
-                traceback.print_exc()
-                await limpiar_pagina()
-                page.controls.append(ft.Container(
-                    expand=True, bgcolor="#0b0d0f",
-                    content=ft.Column(
-                        alignment="center",
-                        horizontal_alignment="center",
-                        expand=True,
-                        controls=[
-                            ft.Icon("local_bar", size=64, color="amber"),
-                            ft.Text("Smart-Liquor", size=28,
-                                    weight="bold", color="white"),
-                            ft.Text("Cargando catálogo...", color="grey"),
-                            ft.ProgressRing(color="amber"),
-                        ]
-                    )
-                ))
-                await page.update_async()
+            print(f"[ROUTE] Redirigiendo cliente a catalogo HTML...")
+            # Redirigir al catalogo HTML en vez de Flet
+            await page.launch_url_async(
+                f"http://57.156.66.168:8000/assets/catalogo.html"
+                f"?telefono={telefono_cliente}&modo={modo_catalogo}"
+            )
         else:
             print("[ROUTE] Sin parámetros de cliente → verificando autenticación")
             page.session.set("modo_catalogo", "admin")
