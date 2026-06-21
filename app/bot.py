@@ -215,10 +215,11 @@ def menu_principal() -> str:
         "👋 *¡Bienvenido a Smart-Liquor!* 🍷\n"
         "Tu distribuidora de confianza en Chincha.\n\n"
         "¿Qué deseas hacer?\n\n"
-        "1️⃣ Ver catálogo de productos\n"
-        "2️⃣ Hacer un pedido\n"
-        "3️⃣ Hablar con un agente\n\n"
-        "👉 Escribe solo el *número* de tu opción."
+        "1️⃣ *Ver catálogo* — Explora todos nuestros productos y precios\n"
+        "2️⃣ *Hacer un pedido* — Elige productos y te lo llevamos a domicilio\n"
+        "3️⃣ *Hablar con un agente* — Un asesor te atenderá personalmente\n\n"
+        "👉 Escribe solo el *número* de tu opción.\n"
+        "📋 Al elegir 1 o 2 recibirás un enlace para copiar en tu navegador."
     )
 
 
@@ -242,26 +243,11 @@ def generar_url_catalogo(telefono: str, modo: str) -> str:
     if modo == "pedido":
         sesiones[telefono] = {"paso": "esperando_carrito_web"}
         return (
-            f"🛒 *¡HOLA {nombre}! ARMEMOS TU PEDIDO* 🍷\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Elige tus productos en el catálogo, ajusta las cantidades "
-            "y presiona *Confirmar Pedido*. Luego vuelves aquí para finalizar:\n\n"
-            f"⬇️ Toca el enlace:\n"
-            f"\n"
-            f"{url}.com\n\n"
-            f"\n"
-            "💡 Al confirmar en la web, recibirás un resumen aquí para aprobarlo."
+            f"{url}\n\n"
         )
     else:
         return (
-            f"✨ *¡HOLA {nombre}! NUESTRO CATÁLOGO* 🍾\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Explora todos nuestros productos y precios:\n\n"
-            f"⬇️ Toca el enlace:\n"
-            f"\n"
-            f"{url}.com\n\n"
-            f"\n"
-            "💡 Este enlace es solo de lectura. Para comprar elige la opción *2*."
+            f"{url}\n\n"
         )
 
 

@@ -24,6 +24,37 @@ def read_root():
     return {"Smart_Liquor": "Backend Operativo vinculado a Supabase 🚀"}
 
 
+# ── API Catálogo Cliente ──────────────────────────────────────
+@app.get("/api/catalogo/productos")
+def get_productos():
+    try:
+        from sqlalchemy.orm import Session
+        from database import engine
+        import models
+        with Session(engine) as db:
+            prods = db.query(models.Producto).filter(
+                ~models.Producto.nombre.startswith("[DESCONTINUADO]")
+            ).order_by(models.Producto.id.asc()).all()
+            return JSONResponse(content=[{
+                "id":           p.id,
+                "nombre":       p.nombre,
+                "precio_venta": float(p.precio_venta or 0),
+                "stock_actual": p.stock_actual or 0,
+                "stock_minimo": p.stock_minimo or 10,
+            } for p in prods])
+    except Exception as ex:
+        return JSONResponse(content={"error": str(ex)}, status_code=500)
+
+
+@app.get("/catalogo", response_class=HTMLResponse)
+def catalogo_cliente():
+    ruta_html = os.path.join(os.path.dirname(__file__), "static", "catalogo.html")
+    if os.path.exists(ruta_html):
+        with open(ruta_html, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h1>Catálogo no encontrado</h1>", status_code=404)
+
+
 # ── API REST para Panel WhatsApp ──────────────────────────────
 @app.get("/api/wa/conversaciones")
 def get_conversaciones():
@@ -195,7 +226,6 @@ async def app_con_login(page: ft.Page):
             page.session.set("telefono_cliente_whatsapp", None)
             page.session.set("modo_catalogo", "admin")
             page.session.set("autenticado", True)
-            
             await build_dashboard(page)
             print(">>> Dashboard Admin cargado OK")
         except Exception as ex:
@@ -210,7 +240,6 @@ async def app_con_login(page: ft.Page):
         telefono_cliente = None
         modo_catalogo    = "ver"
 
-        # Método 1: Regex sobre la URL
         match_tel = re.search(r"[?&]telefono=([^&\s]+)", url_contexto)
         if match_tel:
             telefono_cliente = match_tel.group(1).strip()
@@ -219,7 +248,6 @@ async def app_con_login(page: ft.Page):
         if match_modo:
             modo_catalogo = match_modo.group(1).strip()
 
-        # Método 2: page.query como fallback
         if not telefono_cliente:
             try:
                 if page.query:
@@ -228,7 +256,6 @@ async def app_con_login(page: ft.Page):
             except Exception as eq:
                 print(f"[ROUTE] page.query no disponible: {eq}")
 
-        # Método 3: Sesión persistente — solo si NO es sesión admin
         if not telefono_cliente:
             try:
                 tel_session  = page.session.get("telefono_cliente_whatsapp")
@@ -246,6 +273,7 @@ async def app_con_login(page: ft.Page):
             try:
                 page.session.set("telefono_cliente_whatsapp", str(telefono_cliente))
                 page.session.set("modo_catalogo", str(modo_catalogo))
+                page.session.set("autenticado", False)
                 from ui import main as build_dashboard
                 await limpiar_pagina()
                 page.padding = 0
@@ -279,7 +307,6 @@ async def app_con_login(page: ft.Page):
                 print(f"[ROUTE] autenticado en sesion: {autenticado}")
             except Exception:
                 autenticado = False
-                print("[ROUTE] autenticado: False (excepcion)")
             if autenticado:
                 print("[ROUTE] Sesión activa → cargando dashboard")
                 await mostrar_dashboard()
