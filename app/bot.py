@@ -238,7 +238,7 @@ def nombre_cliente_corto(telefono: str) -> str:
 
 def generar_url_catalogo(telefono: str, modo: str) -> str:
     nombre = nombre_cliente_corto(telefono)
-    url    = f"{BASE_URL_WEB}/?telefono={telefono}&modo={modo}"
+    url    = f"{BASE_URL_WEB}/assets/catalogo.html?telefono={telefono}&modo={modo}"
 
     if modo == "pedido":
         sesiones[telefono] = {"paso": "esperando_carrito_web"}
