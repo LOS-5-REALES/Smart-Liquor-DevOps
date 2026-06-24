@@ -1,1 +1,1 @@
-"# Smart-Liquor DevOps: Gesti�n Predictiva y Omnicanal"
+"# Smart-Liquor DevOps: Gesti�n Predictiva y Omnicanal "
