@@ -35,7 +35,7 @@ async def main(page: ft.Page):
 
     async def ir_a_panel_whatsapp(e):
         await page.launch_url_async(
-            f"{BASE_URL}/whatsapp",
+            f"{BASE_URL}/assets/whatsapp.html",
             web_window_name="_blank"
         )
 

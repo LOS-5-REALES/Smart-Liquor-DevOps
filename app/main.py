@@ -278,6 +278,22 @@ async def app_con_login(page: ft.Page):
     page.on_route_change = evaluar_ruta_y_desplegar
     await evaluar_ruta_y_desplegar(None)
 
+@app.get("/whatsapp", response_class=HTMLResponse)
+def panel_whatsapp():
+    ruta_html = os.path.join(os.path.dirname(__file__), "static", "whatsapp.html")
+    if os.path.exists(ruta_html):
+        with open(ruta_html, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h1>Panel no encontrado</h1>", status_code=404)
+
+
+@app.get("/catalogo", response_class=HTMLResponse)
+def catalogo_cliente():
+    ruta_html = os.path.join(os.path.dirname(__file__), "static", "catalogo.html")
+    if os.path.exists(ruta_html):
+        with open(ruta_html, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h1>Catálogo no encontrado</h1>", status_code=404)
 
 # ── Montar rutas ──────────────────────────────────────────────
 app.mount("/", flet_fastapi.app(app_con_login))
