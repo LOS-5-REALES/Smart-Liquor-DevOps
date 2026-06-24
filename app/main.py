@@ -17,12 +17,12 @@ app = fastapi.FastAPI(
 if not os.path.exists("static"):
     os.makedirs("static")
 
-# Assets de Flet (íconos y fuentes)
-app.mount("/assets/fonts", StaticFiles(directory="app/static/fonts"), name="flet_fonts")
 # PDFs de reportes
 app.mount("/static", StaticFiles(directory="static"), name="static")
 # HTML pages (catalogo, whatsapp)
 app.mount("/assets", StaticFiles(directory="app/static"), name="assets")
+# Fuentes Flet
+app.mount("/assets/fonts", StaticFiles(directory="app/static/fonts"), name="flet_fonts")
 
 
 @app.get("/api", tags=["Diagnóstico"])
