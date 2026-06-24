@@ -15,6 +15,7 @@ from componentes import (
     build_modal_suministro,
     build_modal_producto,
     build_modal_editar,
+    build_modal_editar_producto,
     build_tarjeta_pedido,
     build_fila_inventario,
     build_panel_clientes,
@@ -70,13 +71,17 @@ async def main(page: ft.Page):
         page=page, run_db=run_db, crud=crud, models=models,
         refrescar_datos=lambda e=None: page.run_task(refrescar_datos),
     )
+    modal_editar_prod, abrir_editar_producto = build_modal_editar_producto(
+        page=page, run_db=run_db, crud=crud, models=models,
+        refrescar_datos=lambda e=None: page.run_task(refrescar_datos),
+    )
     modal_pedido, abrir_modal_pedido = build_modal_pedido(
         page=page, run_db=run_db, crud=crud, models=models,
         refrescar_datos=lambda e=None: page.run_task(refrescar_datos),
     )
     page.overlay.extend([
         modal_suministro, modal_crear, modal_eliminar,
-        modal_editar, modal_pedido,
+        modal_editar, modal_editar_prod, modal_pedido,
     ])
 
     def safe_cargar_modal_editar(pedido_id):
@@ -87,6 +92,9 @@ async def main(page: ft.Page):
 
     def safe_abrir_eliminar(producto_id, producto_nombre):
         page.run_task(abrir_eliminar, producto_id, producto_nombre)
+
+    def safe_abrir_editar_producto(producto_id):
+        page.run_task(abrir_editar_producto, producto_id)
 
     async def cambiar_estado(pedido_id: int, nuevo_estado: str):
         await run_db(lambda db: crud.actualizar_estado_pedido(db, pedido_id, nuevo_estado))
@@ -111,7 +119,6 @@ async def main(page: ft.Page):
             )
 
     def filtrar_pedidos_activos():
-        """Aplica todos los filtros activos sobre _todos_los_pedidos."""
         peds = filtrar_pedidos_por_fecha(
             _todos_los_pedidos, inp_fecha_inicio.value, inp_fecha_fin.value)
         if _filtro_estado["valor"]:
@@ -212,8 +219,12 @@ async def main(page: ft.Page):
                                  and not p.nombre.startswith("[DESCONTINUADO]")]
             for pr in prods_mostrar:
                 lista_inventario_ui.controls.append(
-                    build_fila_inventario(pr=pr, abrir_suministro=safe_abrir_suministro,
-                                          abrir_eliminar=safe_abrir_eliminar)
+                    build_fila_inventario(
+                        pr=pr,
+                        abrir_suministro=safe_abrir_suministro,
+                        abrir_eliminar=safe_abrir_eliminar,
+                        abrir_editar_producto=safe_abrir_editar_producto,
+                    )
                 )
             await refrescar_clientes()
             await page.update_async()
@@ -232,7 +243,12 @@ async def main(page: ft.Page):
         lista_inventario_ui.controls.clear()
         for pr in prods:
             lista_inventario_ui.controls.append(
-                build_fila_inventario(pr, safe_abrir_suministro, safe_abrir_eliminar))
+                build_fila_inventario(
+                    pr,
+                    safe_abrir_suministro,
+                    safe_abrir_eliminar,
+                    safe_abrir_editar_producto,
+                ))
         await page.update_async()
 
     async def cerrar_sesion(e=None):
