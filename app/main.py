@@ -299,7 +299,7 @@ def catalogo_cliente():
     return HTMLResponse(content="<h1>Catálogo no encontrado</h1>", status_code=404)
 
 # ── Montar rutas ──────────────────────────────────────────────
-app.mount("/", flet_fastapi.app(app_con_login))
+app.mount("/", flet_fastapi.app(app_con_login, assets_dir="app/flet_assets"))
 
 if __name__ == "__main__":
     if esperar_y_crear_tablas():
