@@ -11,8 +11,8 @@ def crear_producto_real():
     
     # Nuevo producto de prueba
     nuevo_producto = {
-        "nombre": "Absolut Vodka",
-        "marca": "Absolut",
+        "nombre": "Ron catarvio black 750ml",
+        "marca": "catarvio",
         "precio_venta": 95.00,
         "costo_compra": 70.00,
         "stock_actual": 35,

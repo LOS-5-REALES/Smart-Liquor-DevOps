@@ -1,6 +1,19 @@
 version: "3.8"
 
 services:
+
+  # ── Base de datos local ─────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: liquor_db
+    environment:
+      POSTGRES_USER: admin_licores
+      POSTGRES_PASSWORD: password_seguro
+      POSTGRES_DB: liquor_store
+    ports:
+      - "5432:5432"
+
+  # ── Dashboard administrativo (sin cambios) ──────────────────
   app:
     build:
       context: ..
@@ -11,8 +24,24 @@ services:
       - "8000:8000"
     env_file:
       - ../.env
+    depends_on:
+      - db
     volumes:
-      - ..:/app # Sincroniza tu código local con el contenedor (Hot Reload)
+      - ..:/app
+    restart: always
 
-
-# Nota: Ya no necesitamos declarar 'volumes' globales porque eliminamos 'liquor_data'
+  # ── Bot de WhatsApp (servicio independiente) ────────────────
+  # Si este servicio falla, el dashboard sigue funcionando
+  whatsapp_bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile   # misma imagen que el dashboard
+    container_name: whatsapp_bot
+    ports:
+      - "8001:8001"
+    env_file:
+      - ../.env
+    depends_on:
+      - db
+    restart: always
+    command: python app/main_bot.py   # distinto punto de entrada
