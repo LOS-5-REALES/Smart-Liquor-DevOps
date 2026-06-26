@@ -27,7 +27,7 @@ pipeline {
         stage('3. Pruebas de Integracion') {
             steps {
                 echo "Ejecutando pruebas de integracion..."
-                bat 'if exist tests\\integration pytest tests\\integration || exit /b 0'
+                bat 'pytest tests\\integration'
             }
         }
 
