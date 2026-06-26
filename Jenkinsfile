@@ -88,6 +88,11 @@ pipeline {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     withCredentials([file(credentialsId: 'gcp-jenkins-deployer-key', variable: 'GCP_KEY')]) {
                         bat """
+                            rem docker push necesita encontrar docker-credential-gcloud, que
+                            rem vive en la misma carpeta de gcloud.cmd. Se agrega al PATH solo
+                            rem para este proceso, sin tocar el PATH de sistema de la maquina.
+                            set "PATH=%PATH%;C:\\Users\\User\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\bin"
+
                             call "%GCLOUD%" auth activate-service-account --key-file="%GCP_KEY%"
                             call "%GCLOUD%" config set project smart-liquor-devops
                             call "%GCLOUD%" auth configure-docker us-central1-docker.pkg.dev --quiet
