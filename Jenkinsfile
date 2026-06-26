@@ -77,7 +77,45 @@ pipeline {
             }
         }
 
-        stage('8. Metricas DORA') {
+        stage('8. Despliegue opcional a Cloud Run') {
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    withCredentials([file(credentialsId: 'gcp-jenkins-deployer-key', variable: 'GCP_KEY')]) {
+                        bat """
+                            gcloud auth activate-service-account --key-file="%GCP_KEY%"
+                            gcloud config set project smart-liquor-devops
+                            gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+                            docker tag docker-app us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/app:latest
+                            docker tag docker-whatsapp_bot us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/whatsapp-bot:latest
+
+                            docker push us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/app:latest
+                            docker push us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/whatsapp-bot:latest
+
+                            gcloud run deploy smart-liquor-app ^
+                                --image=us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/app:latest ^
+                                --region=us-central1 ^
+                                --platform=managed ^
+                                --allow-unauthenticated ^
+                                --port=8000 ^
+                                --max-instances=1 ^
+                                --set-env-vars=DATABASE_URL=%DATABASE_URL%
+
+                            gcloud run deploy smart-liquor-whatsapp-bot ^
+                                --image=us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/whatsapp-bot:latest ^
+                                --region=us-central1 ^
+                                --platform=managed ^
+                                --allow-unauthenticated ^
+                                --port=8001 ^
+                                --max-instances=1 ^
+                                --set-env-vars=DATABASE_URL=%DATABASE_URL%
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('9. Metricas DORA') {
     steps {
         echo 'Calculando metricas DORA...'
         script {
