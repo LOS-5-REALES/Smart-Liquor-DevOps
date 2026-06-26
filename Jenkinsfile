@@ -17,35 +17,42 @@ pipeline {
             }
         }
 
-        stage('2. Calidad de Codigo (Linting)') {
+        stage('2. Instalar dependencias') {
+            steps {
+                echo 'Instalando dependencias de Python en el agente...'
+                bat 'pip install -r requirements.txt'
+            }
+        }
+
+        stage('3. Calidad de Codigo (Linting)') {
             steps {
                 echo 'Validando estilo y sintaxis del codigo...'
                 bat 'flake8 .'
             }
         }
 
-        stage('3. Pruebas de Integracion') {
+        stage('4. Pruebas de Integracion') {
             steps {
                 echo "Ejecutando pruebas de integracion..."
                 bat 'pytest tests\\integration'
             }
         }
 
-        stage('4. Construccion (Docker)') {
+        stage('5. Construccion (Docker)') {
             steps {
                 echo 'Generando imagen de contenedor...'
                 bat "docker-compose -f ${COMPOSE_FILE} build"
             }
         }
 
-        stage('5. Despliegue Local') {
+        stage('6. Despliegue Local') {
             steps {
                 echo 'Levantando servicios localmente...'
                 bat "docker-compose -f ${COMPOSE_FILE} up -d"
             }
         }
 
-        stage('6. Despliegue remoto en VM Azure') {
+        stage('7. Despliegue remoto en VM Azure') {
             steps {
                 withCredentials([file(credentialsId: 'ssh-key-smartliquor', variable: 'SSH_KEY')]) {
                     powershell """
@@ -68,7 +75,7 @@ pipeline {
             }
         }
 
-        stage('7. Metricas DORA') {
+        stage('8. Metricas DORA') {
     steps {
         echo 'Calculando metricas DORA...'
         script {
