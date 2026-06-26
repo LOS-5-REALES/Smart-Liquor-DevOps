@@ -7,6 +7,10 @@ pipeline {
         VM_USER      = "smartliquor"
         VM_REPO_PATH = "/home/smartliquor/Smart-Liquor-DevOps"
         VM_BRANCH    = "dev/dashboard-mejoras"
+        // gcloud se instalo a nivel de usuario en el agente, asi que no esta
+        // en el PATH del servicio de Jenkins (corre como cuenta de sistema).
+        // Se llama por ruta completa en vez de depender del PATH.
+        GCLOUD       = "C:\\Users\\User\\AppData\\Local\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd"
     }
 
     stages {
@@ -82,9 +86,9 @@ pipeline {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     withCredentials([file(credentialsId: 'gcp-jenkins-deployer-key', variable: 'GCP_KEY')]) {
                         bat """
-                            gcloud auth activate-service-account --key-file="%GCP_KEY%"
-                            gcloud config set project smart-liquor-devops
-                            gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+                            "%GCLOUD%" auth activate-service-account --key-file="%GCP_KEY%"
+                            "%GCLOUD%" config set project smart-liquor-devops
+                            "%GCLOUD%" auth configure-docker us-central1-docker.pkg.dev --quiet
 
                             docker tag docker-app us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/app:latest
                             docker tag docker-whatsapp_bot us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/whatsapp-bot:latest
@@ -92,7 +96,7 @@ pipeline {
                             docker push us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/app:latest
                             docker push us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/whatsapp-bot:latest
 
-                            gcloud run deploy smart-liquor-app ^
+                            "%GCLOUD%" run deploy smart-liquor-app ^
                                 --image=us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/app:latest ^
                                 --region=us-central1 ^
                                 --platform=managed ^
@@ -101,7 +105,7 @@ pipeline {
                                 --max-instances=1 ^
                                 --set-env-vars=DATABASE_URL=%DATABASE_URL%
 
-                            gcloud run deploy smart-liquor-whatsapp-bot ^
+                            "%GCLOUD%" run deploy smart-liquor-whatsapp-bot ^
                                 --image=us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/whatsapp-bot:latest ^
                                 --region=us-central1 ^
                                 --platform=managed ^
