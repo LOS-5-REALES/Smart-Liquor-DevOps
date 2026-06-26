@@ -6,7 +6,7 @@ pipeline {
         VM_IP        = "57.156.66.168"
         VM_USER      = "smartliquor"
         VM_REPO_PATH = "/home/smartliquor/Smart-Liquor-DevOps"
-        VM_BRANCH    = "dev/dashboard-mejoras"
+        VM_BRANCH    = "main"
         // gcloud se instalo a nivel de usuario en el agente, asi que no esta
         // en el PATH del servicio de Jenkins (corre como cuenta de sistema).
         // Se llama por ruta completa en vez de depender del PATH.
@@ -74,7 +74,7 @@ pipeline {
                             icacls \$keyPath /remove "Everyone" | Out-Null
 
                             ssh -i \$keyPath -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${VM_USER}@${VM_IP} `
-                                "cd ${VM_REPO_PATH} && git pull origin ${VM_BRANCH} && docker-compose -f docker/docker-compose.yml down && docker-compose -f docker/docker-compose.yml up -d --build"
+                                "cd ${VM_REPO_PATH} && git fetch origin && git checkout ${VM_BRANCH} && git reset --hard origin/${VM_BRANCH} && docker-compose -f docker/docker-compose.yml down && docker-compose -f docker/docker-compose.yml up -d --build"
 
                             Remove-Item \$keyPath -Force
                         """
