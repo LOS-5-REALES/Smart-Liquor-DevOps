@@ -7,6 +7,9 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker"
     directory: "/docker"
@@ -14,6 +17,13 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
+    ignore:
+      # Las versiones de la imagen base de Python son "3.MINOR", asi que un
+      # salto como 3.10 -> 3.14 cuenta como "minor" para Dependabot, aunque
+      # en la practica rompe compatibilidad de paquetes compilados (psycopg2,
+      # flet, etc.). Por eso bloqueamos major Y minor, solo se permite patch.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
