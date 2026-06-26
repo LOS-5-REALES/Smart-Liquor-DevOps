@@ -110,7 +110,7 @@ pipeline {
                                 --allow-unauthenticated ^
                                 --port=8000 ^
                                 --max-instances=1 ^
-                                --set-env-vars=DATABASE_URL=%DATABASE_URL%
+                                --set-env-vars=DATABASE_URL=%DATABASE_URL%,BASE_URL=https://smart-liquor-app-918742480158.us-central1.run.app
 
                             call "%GCLOUD%" run deploy smart-liquor-whatsapp-bot ^
                                 --image=us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/whatsapp-bot:latest ^
