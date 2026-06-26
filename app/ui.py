@@ -258,9 +258,9 @@ async def main(page: ft.Page):
             logout()
         except Exception:
             pass
-        page.session.set("telefono_cliente_whatsapp", None)
-        page.session.set("modo_catalogo", "admin")
-        page.session.set("autenticado", False)
+        page.session.store.set("telefono_cliente_whatsapp", None)
+        page.session.store.set("modo_catalogo", "admin")
+        page.session.store.set("autenticado", False)
         page.controls.clear()
         page.overlay.clear()
         page.bottom_appbar = None
@@ -273,9 +273,9 @@ async def main(page: ft.Page):
             page.controls.clear()
             page.overlay.clear()
             page.bottom_appbar = None
-            page.session.set("telefono_cliente_whatsapp", None)
-            page.session.set("modo_catalogo", "admin")
-            page.session.set("mostrar_login", cerrar_sesion)
+            page.session.store.set("telefono_cliente_whatsapp", None)
+            page.session.store.set("modo_catalogo", "admin")
+            page.session.store.set("mostrar_login", cerrar_sesion)
             await build_dashboard(page)
         page.controls.append(
             build_login_screen(page=page, on_login_exitoso=on_login)
