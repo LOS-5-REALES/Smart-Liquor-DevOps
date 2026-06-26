@@ -88,9 +88,9 @@ pipeline {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     withCredentials([file(credentialsId: 'gcp-jenkins-deployer-key', variable: 'GCP_KEY')]) {
                         bat """
-                            "%GCLOUD%" auth activate-service-account --key-file="%GCP_KEY%"
-                            "%GCLOUD%" config set project smart-liquor-devops
-                            "%GCLOUD%" auth configure-docker us-central1-docker.pkg.dev --quiet
+                            call "%GCLOUD%" auth activate-service-account --key-file="%GCP_KEY%"
+                            call "%GCLOUD%" config set project smart-liquor-devops
+                            call "%GCLOUD%" auth configure-docker us-central1-docker.pkg.dev --quiet
 
                             docker tag docker-app us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/app:latest
                             docker tag docker-whatsapp_bot us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/whatsapp-bot:latest
@@ -98,7 +98,7 @@ pipeline {
                             docker push us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/app:latest
                             docker push us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/whatsapp-bot:latest
 
-                            "%GCLOUD%" run deploy smart-liquor-app ^
+                            call "%GCLOUD%" run deploy smart-liquor-app ^
                                 --image=us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/app:latest ^
                                 --region=us-central1 ^
                                 --platform=managed ^
@@ -107,7 +107,7 @@ pipeline {
                                 --max-instances=1 ^
                                 --set-env-vars=DATABASE_URL=%DATABASE_URL%
 
-                            "%GCLOUD%" run deploy smart-liquor-whatsapp-bot ^
+                            call "%GCLOUD%" run deploy smart-liquor-whatsapp-bot ^
                                 --image=us-central1-docker.pkg.dev/smart-liquor-devops/smart-liquor/whatsapp-bot:latest ^
                                 --region=us-central1 ^
                                 --platform=managed ^
