@@ -47,6 +47,8 @@ pipeline {
 
         stage('6. Despliegue Local') {
             steps {
+                echo 'Limpiando contenedores previos antes de desplegar...'
+                bat "docker-compose -f ${COMPOSE_FILE} down --remove-orphans"
                 echo 'Levantando servicios localmente...'
                 bat "docker-compose -f ${COMPOSE_FILE} up -d"
             }
