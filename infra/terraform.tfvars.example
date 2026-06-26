@@ -1,0 +1,6 @@
+# ⚠️  ESTE ARCHIVO DEBE ESTAR EN .gitignore — contiene tu subscription_id
+# Renombra este archivo a terraform.tfvars y rellena tus datos reales
+
+subscription_id     = "PEGA-AQUI-TU-SUBSCRIPTION-ID"
+admin_username      = "smartliquor"
+ssh_public_key_path = "~/.ssh/id_rsa.pub"

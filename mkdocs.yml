@@ -1,0 +1,15 @@
+site_name: Smart-Liquor Documentación
+theme:
+  name: material
+  palette:
+    scheme: slate # Modo oscuro por defecto
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["app"]
+          options:
+            show_root_heading: false  # Oculta el nombre del archivo ("crud", "models") para evitar duplicados
+            show_root_toc_entry: false # Oculta la entrada raíz del índice
+            heading_level: 3          # Empuja todas las funciones/clases al nivel 3 (###) para que se aniden
