@@ -210,10 +210,10 @@ async def app_con_login(page: ft.Page):
         try:
             await limpiar_pagina()
             page.padding = 0
-            page.session.set("mostrar_login", mostrar_login)
-            page.session.set("telefono_cliente_whatsapp", None)
-            page.session.set("modo_catalogo", "admin")
-            page.session.set("autenticado", True)
+            page.session.store.set("mostrar_login", mostrar_login)
+            page.session.store.set("telefono_cliente_whatsapp", None)
+            page.session.store.set("modo_catalogo", "admin")
+            page.session.store.set("autenticado", True)
             await build_dashboard(page)
             print(">>> Dashboard Admin cargado OK")
         except Exception as ex:
@@ -246,8 +246,8 @@ async def app_con_login(page: ft.Page):
 
         if not telefono_cliente:
             try:
-                tel_session  = page.session.get("telefono_cliente_whatsapp")
-                modo_session = page.session.get("modo_catalogo") or "ver"
+                tel_session  = page.session.store.get("telefono_cliente_whatsapp")
+                modo_session = page.session.store.get("modo_catalogo") or "ver"
                 if tel_session and modo_session != "admin":
                     telefono_cliente = tel_session
                     modo_catalogo    = modo_session
@@ -265,9 +265,9 @@ async def app_con_login(page: ft.Page):
             )
         else:
             print("[ROUTE] Sin parámetros de cliente → verificando autenticación")
-            page.session.set("modo_catalogo", "admin")
+            page.session.store.set("modo_catalogo", "admin")
             try:
-                autenticado = page.session.get("autenticado")
+                autenticado = page.session.store.get("autenticado")
                 print(f"[ROUTE] autenticado en sesion: {autenticado}")
             except Exception:
                 autenticado = False
