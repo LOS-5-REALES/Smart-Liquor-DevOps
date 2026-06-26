@@ -56,23 +56,25 @@ pipeline {
 
         stage('7. Despliegue remoto en VM Azure') {
             steps {
-                withCredentials([file(credentialsId: 'ssh-key-smartliquor', variable: 'SSH_KEY')]) {
-                    powershell """
-                        \$keyPath = "C:\\\\jenkins_key_tmp\\\\id_rsa"
-                        New-Item -ItemType Directory -Force -Path "C:\\\\jenkins_key_tmp" | Out-Null
-                        Copy-Item "\$env:SSH_KEY" \$keyPath -Force
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    withCredentials([file(credentialsId: 'ssh-key-smartliquor', variable: 'SSH_KEY')]) {
+                        powershell """
+                            \$keyPath = "C:\\\\jenkins_key_tmp\\\\id_rsa"
+                            New-Item -ItemType Directory -Force -Path "C:\\\\jenkins_key_tmp" | Out-Null
+                            Copy-Item "\$env:SSH_KEY" \$keyPath -Force
 
-                        icacls \$keyPath /inheritance:r | Out-Null
-                        icacls \$keyPath /grant:r "SYSTEM:F" | Out-Null
-                        icacls \$keyPath /grant:r "Administradores:F" | Out-Null
-                        icacls \$keyPath /remove "BUILTIN\\\\Usuarios" | Out-Null
-                        icacls \$keyPath /remove "Everyone" | Out-Null
+                            icacls \$keyPath /inheritance:r | Out-Null
+                            icacls \$keyPath /grant:r "SYSTEM:F" | Out-Null
+                            icacls \$keyPath /grant:r "Administradores:F" | Out-Null
+                            icacls \$keyPath /remove "BUILTIN\\\\Usuarios" | Out-Null
+                            icacls \$keyPath /remove "Everyone" | Out-Null
 
-                        ssh -i \$keyPath -o StrictHostKeyChecking=no ${VM_USER}@${VM_IP} `
-                            "cd ${VM_REPO_PATH} && git pull origin ${VM_BRANCH} && docker-compose -f docker/docker-compose.yml down && docker-compose -f docker/docker-compose.yml up -d --build"
+                            ssh -i \$keyPath -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${VM_USER}@${VM_IP} `
+                                "cd ${VM_REPO_PATH} && git pull origin ${VM_BRANCH} && docker-compose -f docker/docker-compose.yml down && docker-compose -f docker/docker-compose.yml up -d --build"
 
-                        Remove-Item \$keyPath -Force
-                    """
+                            Remove-Item \$keyPath -Force
+                        """
+                    }
                 }
             }
         }
