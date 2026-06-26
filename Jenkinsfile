@@ -119,6 +119,8 @@ pipeline {
                                 --allow-unauthenticated ^
                                 --port=8001 ^
                                 --max-instances=1 ^
+                                --command=python ^
+                                --args=app/main_bot.py ^
                                 --set-env-vars=DATABASE_URL=%DATABASE_URL%
                         """
                     }
