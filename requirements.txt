@@ -21,7 +21,7 @@ flet==0.23.2
 flet-core==0.23.2
 flet-runtime==0.23.2
 frozenlist==1.8.0
-greenlet==3.5.1
+greenlet==3.5.3
 h11==0.14.0
 httpcore==0.17.3
 httpx==0.24.1
