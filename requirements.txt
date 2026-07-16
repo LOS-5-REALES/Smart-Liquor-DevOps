@@ -5,7 +5,7 @@ aiosignal==1.4.0
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.13.0
-appier==1.45.4
+appier==1.46.0
 arrow==1.4.0
 async-timeout==5.0.1
 attrs==26.1.0
